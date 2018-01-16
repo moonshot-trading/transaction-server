@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"encoding/json"
+	"database/sql"
+
+	_ "github.com/lib/pq"
 )
 
 var (
@@ -39,7 +42,23 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 	//	Apply the charge to the users account in the database
 }
 
+func loadDB() *sql.DB {
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "localhost", 5432, "moonshot", "hodl", "moonshot")
+	db, err := sql.Open("postgres", psqlInfo)
+	if err != nil {
+		failGracefully(err, "Failed to open Postgres")
+	}
+	err = db.Ping()
+	if err != nil {
+		failGracefully(err, "Failed to Ping Postgres")
+	} else {
+		fmt.Println("Connectd to DB")
+	}
+	return db
+}
+
 func main() {
+	_ = loadDB()
 	port := ":44416"
 	fmt.Printf("Listening on port %s\n", port)
 	http.HandleFunc("/", rootHandler)
