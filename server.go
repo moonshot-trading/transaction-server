@@ -6,6 +6,7 @@ import (
 	"net"
 	"bufio"
 	"time"
+	"strings"
 	"strconv"
 	"math/rand"
 	"encoding/json"
@@ -15,11 +16,11 @@ import (
 )
 
 type Quote struct {
-	Price int
+	Price string
 	StockSymbol string
 	UserId string
 	Timestamp int
-	CryptoKey int
+	CryptoKey string
 }
 
 var (
@@ -56,18 +57,23 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 	failOnError(err, "Unable to connect to quote service")
 
 	fmt.Fprintf(conn, commandString + "\n")
-	quotedPrice, _ := bufio.NewReader(conn).ReadString('\n')
+	quoteString, _ := bufio.NewReader(conn).ReadString('\n')
+
+	quoteStringComponents := strings.Split(quoteString, ",")
+	stockPrice := quoteStringComponents[0]
+	stockSymbol := quoteStringComponents[1]
+	userId := quoteStringComponents[2]
+	timestamp, _ := strconv.Atoi(quoteStringComponents[3])
+	cryptoKey := quoteStringComponents[4]
 
 	//	Apply the charge to the users account in the database
 
 	//	Return quote back to requester
-	priceString, err := strconv.ParseInt(quotedPrice, 10, 64)
-	quote.Price = int(priceString)
-	quote.StockSymbol = req.StockSymbol
-	quote.UserId = req.UserId
-	//	Need to update the test quote server to generate this timestamp and cryptokey
-	quote.Timestamp = int(time.Now().Unix())
-	quote.CryptoKey = rand.Intn(99999999 - 10000000) + 10000000
+	quote.Price = stockPrice
+	quote.StockSymbol = stockSymbol
+	quote.UserId = userId
+	quote.Timestamp = timestamp
+	quote.CryptoKey = cryptoKey
 
 	quoteJson, err := json.Marshal(quote)
 	if err != nil {
