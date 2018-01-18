@@ -15,6 +15,13 @@ import (
 	_ "github.com/lib/pq"
 )
 
+//	Globals
+var (
+	quoteServerURL = "localhost"
+	quoteServerPort = 44415
+	db = loadDB()
+)
+
 type Quote struct {
 	Price string
 	StockSymbol string
@@ -22,11 +29,6 @@ type Quote struct {
 	Timestamp int
 	CryptoKey string
 }
-
-var (
-	quoteServerURL = "localhost"
-	quoteServerPort = 44415
-)
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -51,6 +53,27 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 	quote := Quote{}
 
 	//	Check if the user exists, and if they have the necessary balance to request a quote
+	queryString := "SELECT funds FROM users WHERE user_name = $1"
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	var funds int
+	err = stmt.QueryRow(req.UserId).Scan(&funds)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	if funds < 5 {
+		//	Not enough money to get a quote
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
 
 	//	Make request to the quote service
 	conn, err := net.Dial("tcp", "localhost:44415")
@@ -67,6 +90,27 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 	cryptoKey := quoteStringComponents[4]
 
 	//	Apply the charge to the users account in the database
+	queryString = "UPDATE users SET funds = $1 WHERE user_name = $2"
+	stmt, err = db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	res, err := stmt.Exec(funds - 5, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	numRows, err := res.RowsAffected()
+
+	if err != nil || numRows < 1 {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
 
 	//	Return quote back to requester
 	quote.Price = stockPrice
@@ -102,7 +146,6 @@ func loadDB() *sql.DB {
 
 func main() {
 	rand.Seed(time.Now().Unix())
-	_ = loadDB()
 	port := ":44416"
 	fmt.Printf("Listening on port %s\n", port)
 	http.HandleFunc("/", rootHandler)
