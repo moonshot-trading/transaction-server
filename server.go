@@ -172,9 +172,30 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func buyHandler(w http.ResponseWriter, r *http.Request) {
-	//	Get a quote
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId string
+		StockSymbol string
+		Amount int
+	}{"", "", 0}
 
-	// Create/Update their stock entry
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	//	Get a quote
+	commandString := req.UserId + "," + req.StockSymbol
+	quoteString, err := getQuote(commandString, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	// Keep track of buy command to be committed later
 
 	//	Adjust account balance
 
