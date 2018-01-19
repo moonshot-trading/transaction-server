@@ -171,6 +171,16 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func buyHandler(w http.ResponseWriter, r *http.Request) {
+	//	Get a quote
+
+	// Create/Update their stock entry
+
+	//	Adjust account balance
+
+	//	Send response back to client
+}
+
 func loadDB() *sql.DB {
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "localhost", 5432, "moonshot", "hodl", "moonshot")
 	db, err := sql.Open("postgres", psqlInfo)
@@ -193,5 +203,6 @@ func main() {
 	http.HandleFunc("/", rootHandler)
 	http.HandleFunc("/quote", quoteHandler)
 	http.HandleFunc("/add", addHandler)
+	http.HandleFunc("/buy", buyHandler)
 	http.ListenAndServe(port, nil)
 }
