@@ -190,6 +190,30 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 
 	buyTime := int(time.Now().Unix())
 
+	//	Check if user has funds to buy at this price
+	queryString := "UPDATE users SET funds = users.funds - $1 WHERE user_name = $2"
+
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	res, err := stmt.Exec(req.Amount, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	numRows, err := res.RowsAffected()
+
+	if numRows < 1 {
+		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
 	//	Get a quote
 	commandString := req.UserId + "," + req.StockSymbol
 	quoteString, err := getQuote(commandString, req.UserId)
@@ -209,32 +233,6 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.StockSymbol = quoteStringComponents[1]
 	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
 	thisBuy.BuyAmount = req.Amount
-
-	//	Check if user has funds to buy at this price
-	requiredBalance := int(thisBuy.BuyAmount * int(thisBuy.StockPrice * 100))
-	queryString := "UPDATE users SET funds = users.funds - $1 WHERE user_name = $2"
-
-	stmt, err := db.Prepare(queryString)
-
-	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
-		return
-	}
-
-	res, err := stmt.Exec(requiredBalance, req.UserId)
-
-	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
-		return
-	}
-
-	numRows, err := res.RowsAffected()
-
-	if numRows < 1 {
-		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
-		return
-	}
-
 
 	//	Add buy to stack of pending buys
 	if buyMap[req.UserId] == nil {
