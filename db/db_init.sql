@@ -20,7 +20,7 @@ CREATE TYPE command AS ENUM(
 CREATE TABLE IF NOT EXISTS users (
   u_id          serial PRIMARY KEY,
   user_name     VARCHAR(20) UNIQUE NOT NULL,
-  funds         INT
+  funds         INT CONSTRAINT positive_balance CHECK (0 <= funds)
 );
 
 
