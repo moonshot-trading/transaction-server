@@ -57,6 +57,7 @@ func getQuote(commandString string, UserId string) (string, error) {
 
 	if err != nil {
 		fmt.Println("Connection error")
+		return "", err
 	}
 
 	conn.Write([]byte(commandString + "\n"))
@@ -106,7 +107,7 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	commandString := req.StockSymbol + "," + req.UserId
+	commandString := req.UserId + "," + req.StockSymbol
 	quoteString, err := getQuote(commandString, req.UserId)
 
 	if err != nil {
@@ -165,7 +166,7 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 	numRows, err := res.RowsAffected()
 
 	if numRows < 1 {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
 		return
 	}
 
@@ -198,7 +199,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Keep track of buy command to be committed later
+	// Parse Quote
 	quoteStringComponents := strings.Split(quoteString, ",")
 	thisBuy := Buy{}
 
@@ -209,15 +210,42 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
 	thisBuy.BuyAmount = req.Amount
 
+	//	Check if user has funds to buy at this price
+	requiredBalance := int(thisBuy.BuyAmount * int(thisBuy.StockPrice * 100))
+	queryString := "UPDATE users SET funds = users.funds - $1 WHERE user_name = $2"
+
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	res, err := stmt.Exec(requiredBalance, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	numRows, err := res.RowsAffected()
+
+	if numRows < 1 {
+		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+
+	//	Add buy to stack of pending buys
 	if buyMap[req.UserId] == nil {
 		buyMap[req.UserId] = &Stack{}
 	}
 	
 	buyMap[req.UserId].Push(thisBuy)
 
-	//	Adjust account balance
-
 	//	Send response back to client
+	w.WriteHeader(http.StatusOK)
+
 }
 
 func loadDB() *sql.DB {
@@ -230,7 +258,7 @@ func loadDB() *sql.DB {
 	if err != nil {
 		failGracefully(err, "Failed to Ping Postgres")
 	} else {
-		fmt.Println("Connectd to DB")
+		fmt.Println("Connected to DB")
 	}
 	return db
 }
