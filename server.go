@@ -20,6 +20,7 @@ var (
 	quoteServerURL = "localhost"
 	quoteServerPort = 44415
 	db = loadDB()
+	buyMap = make(map[string]*Stack)
 )
 
 type Quote struct {
@@ -186,6 +187,8 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	buyTime := int(time.Now().Unix())
+
 	//	Get a quote
 	commandString := req.UserId + "," + req.StockSymbol
 	quoteString, err := getQuote(commandString, req.UserId)
@@ -196,6 +199,21 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Keep track of buy command to be committed later
+	quoteStringComponents := strings.Split(quoteString, ",")
+	thisBuy := Buy{}
+
+	thisBuy.BuyTimestamp = buyTime
+	thisBuy.QuoteTimestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	thisBuy.QuoteCryptoKey = quoteStringComponents[4]
+	thisBuy.StockSymbol = quoteStringComponents[1]
+	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
+	thisBuy.BuyAmount = req.Amount
+
+	if buyMap[req.UserId] == nil {
+		buyMap[req.UserId] = &Stack{}
+	}
+	
+	buyMap[req.UserId].Push(thisBuy)
 
 	//	Adjust account balance
 
