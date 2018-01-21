@@ -26,9 +26,10 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- This table might be moved to redis?
 CREATE TABLE IF NOT EXISTS stocks (
-  u_id          INT REFERENCES users(u_id),
+  user_name     VARCHAR(20) REFERENCES users(user_name),
   stock_symbol  VARCHAR(3),
-  amount        NUMERIC
+  amount        NUMERIC,
+  PRIMARY KEY (user_name, stock_symbol)
 );
 
 -- This table will be moved to the audit server
