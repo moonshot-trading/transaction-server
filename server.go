@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"net"
-	"bufio"
 	"time"
 	"strings"
 	"strconv"
 	"math/rand"
+	"errors"
 	"encoding/json"
 	"database/sql"
 
@@ -20,6 +20,7 @@ var (
 	quoteServerURL = "localhost"
 	quoteServerPort = 44415
 	db = loadDB()
+	buyMap = make(map[string]*Stack)
 )
 
 type Quote struct {
@@ -28,6 +29,63 @@ type Quote struct {
 	UserId string
 	Timestamp int
 	CryptoKey string
+}
+
+func getQuote(commandString string, UserId string) (string, error) {
+	//	Check if the user exists, and if they have the necessary balance to request a quote
+	queryString := "SELECT funds FROM users WHERE user_name = $1"
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		return "", err
+	}
+
+	var funds int
+	err = stmt.QueryRow(UserId).Scan(&funds)
+
+	if err != nil {
+		return "", err
+	}
+
+	if funds < 5 {
+		//	Not enough money to get a quote
+		return "", errors.New("Insufficient Funds")
+	}
+
+	conn, err := net.Dial("tcp", "localhost:44415")
+	defer conn.Close()
+
+	if err != nil {
+		fmt.Println("Connection error")
+		return "", err
+	}
+
+	conn.Write([]byte(commandString + "\n"))
+	buff := make([]byte, 1024)
+	length, _ := conn.Read(buff)
+
+	//	Apply the charge to the users account in the database
+	queryString = "UPDATE users SET funds = $1 WHERE user_name = $2"
+	stmt, err = db.Prepare(queryString)
+
+	if err != nil {
+		return "", err
+	}
+
+	res, err := stmt.Exec(funds - 5, UserId)
+
+	if err != nil {
+		return "", err
+	}
+
+	numRows, err := res.RowsAffected()
+
+	if err != nil || numRows < 1 {
+		return "", errors.New("Couldn't Charge Account")
+	}
+
+	quoteString := string(buff[:length])
+	return quoteString, nil
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
@@ -49,75 +107,22 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	commandString := req.StockSymbol + "," + req.UserId
-	quote := Quote{}
-
-	//	Check if the user exists, and if they have the necessary balance to request a quote
-	queryString := "SELECT funds FROM users WHERE user_name = $1"
-	stmt, err := db.Prepare(queryString)
+	commandString := req.UserId + "," + req.StockSymbol
+	quoteString, err := getQuote(commandString, req.UserId)
 
 	if err != nil {
 		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
 		return
 	}
-
-	var funds int
-	err = stmt.QueryRow(req.UserId).Scan(&funds)
-
-	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
-		return
-	}
-
-	if funds < 5 {
-		//	Not enough money to get a quote
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
-		return
-	}
-
-	//	Make request to the quote service
-	conn, err := net.Dial("tcp", "localhost:44415")
-	failOnError(err, "Unable to connect to quote service")
-
-	fmt.Fprintf(conn, commandString + "\n")
-	quoteString, _ := bufio.NewReader(conn).ReadString('\n')
 
 	quoteStringComponents := strings.Split(quoteString, ",")
-	stockPrice := quoteStringComponents[0]
-	stockSymbol := quoteStringComponents[1]
-	userId := quoteStringComponents[2]
-	timestamp, _ := strconv.Atoi(quoteStringComponents[3])
-	cryptoKey := quoteStringComponents[4]
 
-	//	Apply the charge to the users account in the database
-	queryString = "UPDATE users SET funds = $1 WHERE user_name = $2"
-	stmt, err = db.Prepare(queryString)
-
-	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
-		return
-	}
-
-	res, err := stmt.Exec(funds - 5, req.UserId)
-
-	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
-		return
-	}
-
-	numRows, err := res.RowsAffected()
-
-	if err != nil || numRows < 1 {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
-		return
-	}
-
-	//	Return quote back to requester
-	quote.Price = stockPrice
-	quote.StockSymbol = stockSymbol
-	quote.UserId = userId
-	quote.Timestamp = timestamp
-	quote.CryptoKey = cryptoKey
+	quote := Quote{}
+	quote.Price = quoteStringComponents[0]
+	quote.StockSymbol = quoteStringComponents[1]
+	quote.UserId = quoteStringComponents[2]
+	quote.Timestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	quote.CryptoKey = quoteStringComponents[4]
 
 	quoteJson, err := json.Marshal(quote)
 	if err != nil {
@@ -161,11 +166,84 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 	numRows, err := res.RowsAffected()
 
 	if numRows < 1 {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func buyHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId string
+		StockSymbol string
+		Amount int
+	}{"", "", 0}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	buyTime := int(time.Now().Unix())
+
+	//	Check if user has funds to buy at this price
+	queryString := "UPDATE users SET funds = users.funds - $1 WHERE user_name = $2"
+
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	res, err := stmt.Exec(req.Amount, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	numRows, err := res.RowsAffected()
+
+	if numRows < 1 {
+		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	//	Get a quote
+	commandString := req.UserId + "," + req.StockSymbol
+	quoteString, err := getQuote(commandString, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	// Parse Quote
+	quoteStringComponents := strings.Split(quoteString, ",")
+	thisBuy := Buy{}
+
+	thisBuy.BuyTimestamp = buyTime
+	thisBuy.QuoteTimestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	thisBuy.QuoteCryptoKey = quoteStringComponents[4]
+	thisBuy.StockSymbol = quoteStringComponents[1]
+	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
+	thisBuy.BuyAmount = req.Amount
+
+	//	Add buy to stack of pending buys
+	if buyMap[req.UserId] == nil {
+		buyMap[req.UserId] = &Stack{}
+	}
+	
+	buyMap[req.UserId].Push(thisBuy)
+
+	//	Send response back to client
+	w.WriteHeader(http.StatusOK)
+
 }
 
 func loadDB() *sql.DB {
@@ -178,7 +256,7 @@ func loadDB() *sql.DB {
 	if err != nil {
 		failGracefully(err, "Failed to Ping Postgres")
 	} else {
-		fmt.Println("Connectd to DB")
+		fmt.Println("Connected to DB")
 	}
 	return db
 }
@@ -190,5 +268,6 @@ func main() {
 	http.HandleFunc("/", rootHandler)
 	http.HandleFunc("/quote", quoteHandler)
 	http.HandleFunc("/add", addHandler)
+	http.HandleFunc("/buy", buyHandler)
 	http.ListenAndServe(port, nil)
 }
