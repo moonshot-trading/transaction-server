@@ -246,6 +246,50 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func cancelBuyHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId string
+	}{""}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if buyMap[req.UserId] == nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	latestBuy := buyMap[req.UserId].Pop()
+
+	if latestBuy == nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	//	Return funds to account
+	queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	_, err = stmt.Exec(latestBuy.(Buy).BuyAmount, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func loadDB() *sql.DB {
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "localhost", 5432, "moonshot", "hodl", "moonshot")
 	db, err := sql.Open("postgres", psqlInfo)
@@ -269,5 +313,6 @@ func main() {
 	http.HandleFunc("/quote", quoteHandler)
 	http.HandleFunc("/add", addHandler)
 	http.HandleFunc("/buy", buyHandler)
+	http.HandleFunc("/cancelBuy", cancelBuyHandler)
 	http.ListenAndServe(port, nil)
 }
