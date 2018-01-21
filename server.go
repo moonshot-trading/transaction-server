@@ -290,6 +290,36 @@ func cancelBuyHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId string
+	}{""}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if buyMap[req.UserId] == nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	latestBuy := buyMap[req.UserId].Pop()
+
+	if latestBuy == nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	//	Calculate actual cost of buy
+	latestBuy = latestBuy.(Buy)
+
+}
+
 func loadDB() *sql.DB {
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "localhost", 5432, "moonshot", "hodl", "moonshot")
 	db, err := sql.Open("postgres", psqlInfo)
@@ -314,5 +344,6 @@ func main() {
 	http.HandleFunc("/add", addHandler)
 	http.HandleFunc("/buy", buyHandler)
 	http.HandleFunc("/cancelBuy", cancelBuyHandler)
+	http.HandleFunc("/confirmBuy", confirmBuyHandler)
 	http.ListenAndServe(port, nil)
 }
