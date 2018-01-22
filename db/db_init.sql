@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS stocks (
   user_name     VARCHAR(20) REFERENCES users(user_name),
   stock_symbol  VARCHAR(3),
-  amount        NUMERIC,
+  amount        NUMERIC CONSTRAINT positive_balance CHECK(0 <= amount),
   PRIMARY KEY (user_name, stock_symbol)
 );
 
