@@ -16,4 +16,5 @@ type Sell struct {
 	StockSymbol		string
 	StockPrice		float64
 	SellAmount		int
+	StockSellAmount	int
 }
