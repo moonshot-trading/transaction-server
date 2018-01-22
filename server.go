@@ -8,6 +8,7 @@ import (
 	"strings"
 	"strconv"
 	"math/rand"
+	"math"
 	"errors"
 	"encoding/json"
 	"database/sql"
@@ -21,6 +22,7 @@ var (
 	quoteServerPort = 44415
 	db = loadDB()
 	buyMap = make(map[string]*Stack)
+	sellMap = make(map[string]*Stack)
 )
 
 type Quote struct {
@@ -356,6 +358,168 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func sellHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId string
+		StockSymbol string
+		Amount int
+	}{"", "", 0}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	sellTime := int(time.Now().Unix())
+
+	//	Get a quote
+	commandString := req.UserId + "," + req.StockSymbol
+	quoteString, err := getQuote(commandString, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	//	Parse quote
+	quoteStringComponents := strings.Split(quoteString, ",")
+	thisSell := Sell{}
+
+	thisSell.SellTimestamp = sellTime
+	thisSell.QuoteTimestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	thisSell.QuoteCryptoKey = quoteStringComponents[4]
+	thisSell.StockSymbol = quoteStringComponents[1]
+	thisSell.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
+	thisSell.SellAmount = req.Amount
+	thisSell.StockSellAmount = int(math.Ceil(float64(req.Amount) / (thisSell.StockPrice * 100)))
+
+	//	Check if they have enough stock to sell at this price
+	queryString := "UPDATE stocks SET amount = stocks.amount - $1 WHERE user_name = $2 AND stock_symbol = $3"
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	res, err := stmt.Exec(thisSell.StockSellAmount, req.UserId, thisSell.StockSymbol)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	numRows, err := res.RowsAffected()
+
+	if numRows < 1 {
+		failWithStatusCode(errors.New("Couldn't update portfolio"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	//	Add sell to stack of pending sells
+	if sellMap[req.UserId] == nil {
+		sellMap[req.UserId] = &Stack{}
+	}
+	
+	sellMap[req.UserId].Push(thisSell)
+
+	w.WriteHeader(http.StatusOK)
+
+}
+
+func cancelSellHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId string
+	}{""}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if sellMap[req.UserId] == nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	latestSell := sellMap[req.UserId].Pop()
+
+	if latestSell == nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	//	Return stocks to portfolio
+	queryString := "UPDATE stocks SET amount = amount + $1 WHERE user_name = $2"
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	_, err = stmt.Exec(latestSell.(Sell).StockSellAmount, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId string
+	}{""}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if sellMap[req.UserId] == nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	latestSell := sellMap[req.UserId].Pop()
+
+	if latestSell == nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	//	Add funds to their account
+	sellFunds := latestSell.(Sell).StockSellAmount * int(latestSell.(Sell).StockPrice * 100)
+
+	queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	_, err = stmt.Exec(sellFunds, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func loadDB() *sql.DB {
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "localhost", 5432, "moonshot", "hodl", "moonshot")
 	db, err := sql.Open("postgres", psqlInfo)
@@ -381,5 +545,8 @@ func main() {
 	http.HandleFunc("/buy", buyHandler)
 	http.HandleFunc("/cancelBuy", cancelBuyHandler)
 	http.HandleFunc("/confirmBuy", confirmBuyHandler)
+	http.HandleFunc("/sell", sellHandler)
+	http.HandleFunc("/cancelSell", cancelSellHandler)
+	http.HandleFunc("/confirmSell", confirmSellHandler)
 	http.ListenAndServe(port, nil)
 }
