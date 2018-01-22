@@ -1,36 +1,44 @@
 package main
 
 import (
-	"fmt"
-	"net/http"
-	"net"
-	"time"
-	"strings"
-	"strconv"
-	"math/rand"
-	"math"
-	"errors"
-	"encoding/json"
 	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"math/rand"
+	"net"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	_ "github.com/lib/pq"
 )
 
 //	Globals
 var (
-	quoteServerURL = "localhost"
-	quoteServerPort = 44415
-	db = loadDB()
-	buyMap = make(map[string]*Stack)
-	sellMap = make(map[string]*Stack)
+	quoteServerURL   = "localhost"
+	quoteServerPort  = 44415
+	db               = loadDB()
+	buyMap           = make(map[string]*Stack)
+	sellMap          = make(map[string]*Stack)
+	setBuy           = false
+	setBuyValue      = 0
+	triggerBuy       = false
+	triggerBuyValue  = 0
+	setSell          = false
+	setSellValue     = 0
+	triggerSell      = false
+	triggerSellValue = 0
 )
 
 type Quote struct {
-	Price string
+	Price       string
 	StockSymbol string
-	UserId string
-	Timestamp int
-	CryptoKey string
+	UserId      string
+	Timestamp   int
+	CryptoKey   string
 }
 
 func getQuote(commandString string, UserId string) (string, error) {
@@ -74,7 +82,7 @@ func getQuote(commandString string, UserId string) (string, error) {
 		return "", err
 	}
 
-	res, err := stmt.Exec(funds - 5, UserId)
+	res, err := stmt.Exec(funds-5, UserId)
 
 	if err != nil {
 		return "", err
@@ -98,7 +106,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 func quoteHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId string
+		UserId      string
 		StockSymbol string
 	}{"", ""}
 
@@ -178,9 +186,9 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 func buyHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId string
+		UserId      string
 		StockSymbol string
-		Amount int
+		Amount      int
 	}{"", "", 0}
 
 	err := decoder.Decode(&req)
@@ -240,7 +248,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	if buyMap[req.UserId] == nil {
 		buyMap[req.UserId] = &Stack{}
 	}
-	
+
 	buyMap[req.UserId].Push(thisBuy)
 
 	//	Send response back to client
@@ -318,8 +326,8 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//	Calculate actual cost of buy
-	stockQuantity := int(latestBuy.(Buy).BuyAmount / int(latestBuy.(Buy).StockPrice * 100))
-	actualCharge := int(latestBuy.(Buy).StockPrice * 100) * stockQuantity
+	stockQuantity := int(latestBuy.(Buy).BuyAmount / int(latestBuy.(Buy).StockPrice*100))
+	actualCharge := int(latestBuy.(Buy).StockPrice*100) * stockQuantity
 	refundAmount := latestBuy.(Buy).BuyAmount - actualCharge
 
 	//	Put excess money back into account
@@ -361,9 +369,9 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 func sellHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId string
+		UserId      string
 		StockSymbol string
-		Amount int
+		Amount      int
 	}{"", "", 0}
 
 	err := decoder.Decode(&req)
@@ -423,7 +431,7 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 	if sellMap[req.UserId] == nil {
 		sellMap[req.UserId] = &Stack{}
 	}
-	
+
 	sellMap[req.UserId].Push(thisSell)
 
 	w.WriteHeader(http.StatusOK)
@@ -500,7 +508,7 @@ func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//	Add funds to their account
-	sellFunds := latestSell.(Sell).StockSellAmount * int(latestSell.(Sell).StockPrice * 100)
+	sellFunds := latestSell.(Sell).StockSellAmount * int(latestSell.(Sell).StockPrice*100)
 
 	queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
 	stmt, err := db.Prepare(queryString)
@@ -515,6 +523,436 @@ func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
 		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func setBuyHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId      string
+		StockSymbol string
+		Amount      int
+	}{"", "", 0}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if setBuy == true {
+		//	Cancel the old request
+		queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
+		stmt, err := db.Prepare(queryString)
+
+		if err != nil {
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			return
+		}
+
+		_, err = stmt.Exec(setBuyValue, req.UserId)
+
+		if err != nil {
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	setBuy = false
+	setBuyValue = 0
+
+	//	Check if user has funds to buy at this price
+	queryString := "UPDATE users SET funds = users.funds - $1 WHERE user_name = $2"
+
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	res, err := stmt.Exec(req.Amount, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	numRows, err := res.RowsAffected()
+
+	if numRows < 1 {
+		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	setBuy = true
+	setBuyValue = req.Amount
+	//hit audit server
+
+	//	Send response back to client
+	w.WriteHeader(http.StatusOK)
+
+}
+
+func cancelSetBuyHandler(w http.ResponseWriter, r *http.Request) {
+
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId      string
+		StockSymbol string
+	}{"", ""}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		fmt.Println("yeet")
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if setBuy == false {
+		//cancelling when no trigger has been set
+		fmt.Println("cancel without set")
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	//	Return funds to account
+	queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	_, err = stmt.Exec(setBuyValue, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	setBuy = false
+	setBuyValue = 0
+
+	//remove trigger also if it exists
+	triggerBuy = false
+	triggerBuyValue = 0
+	//hit audit server
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId      string
+		StockSymbol string
+		Amount      int
+	}{"", "", 0}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if setBuy == false {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	triggerBuy = true
+	triggerBuyValue = req.Amount
+	//hit audit server
+
+	//	Get a quote
+	commandString := req.UserId + "," + req.StockSymbol
+	quoteString, err := getQuote(commandString, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	// Parse Quote
+	quoteStringComponents := strings.Split(quoteString, ",")
+	thisBuy := Buy{}
+
+	//thisBuy.BuyTimestamp = buyTime
+	thisBuy.QuoteTimestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	thisBuy.QuoteCryptoKey = quoteStringComponents[4]
+	thisBuy.StockSymbol = quoteStringComponents[1]
+	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
+	thisBuy.BuyAmount = req.Amount
+
+	fmt.Println(thisBuy.StockPrice * 100)
+	fmt.Println(req.Amount)
+
+	if int(thisBuy.StockPrice*100) <= req.Amount {
+
+		//we check the current value to see if the trigger goes right away
+		// this is only for milestone 1
+
+		//do confirm buy stuff
+
+		//	Calculate actual cost of buy
+		stockQuantity := int(setBuyValue / int(thisBuy.StockPrice*100))
+		actualCharge := int(thisBuy.StockPrice*100) * stockQuantity
+		refundAmount := setBuyValue - actualCharge
+
+		//	Put excess money back into account
+		queryString := "UPDATE users SET funds = users.funds + $1 WHERE user_name = $2"
+		stmt, err := db.Prepare(queryString)
+
+		if err != nil {
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			return
+		}
+
+		_, err = stmt.Exec(refundAmount, req.UserId)
+
+		if err != nil {
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			return
+		}
+
+		//	Give stocks to user
+		queryString = "INSERT INTO stocks(user_name, stock_symbol, amount) VALUES($1, $2, $3) ON CONFLICT (user_name, stock_symbol) DO UPDATE SET amount = stocks.amount + $3"
+		stmt, err = db.Prepare(queryString)
+
+		if err != nil {
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			return
+		}
+
+		_, err = stmt.Exec(req.UserId, thisBuy.StockSymbol, stockQuantity)
+
+		if err != nil {
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			return
+		}
+
+		//I assume the trigger goes away if you fufill it
+		setBuy = false
+		setBuyValue = 0
+		triggerBuy = false
+		triggerBuyValue = 0
+	}
+
+	//	Send response back to client
+	w.WriteHeader(http.StatusOK)
+
+}
+
+func setSellHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId      string
+		StockSymbol string
+		Amount      int
+	}{"", "", 0}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if setSell == true {
+		//	Cancel old trigger
+		queryString := "UPDATE stocks SET amount = amount + $1 WHERE user_name = $2 AND stock_symbol = $3"
+		stmt, err := db.Prepare(queryString)
+
+		if err != nil {
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			return
+		}
+
+		_, err = stmt.Exec(setSellValue, req.UserId, req.StockSymbol)
+
+		if err != nil {
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			return
+		}
+
+	}
+
+	setSell = false
+	setSellValue = 0
+
+	sellTime := int(time.Now().Unix())
+
+	//	Get a quote
+	commandString := req.UserId + "," + req.StockSymbol
+	quoteString, err := getQuote(commandString, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	//	Parse quote
+	quoteStringComponents := strings.Split(quoteString, ",")
+	thisSell := Sell{}
+
+	thisSell.SellTimestamp = sellTime
+	thisSell.QuoteTimestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	thisSell.QuoteCryptoKey = quoteStringComponents[4]
+	thisSell.StockSymbol = quoteStringComponents[1]
+	thisSell.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
+	thisSell.SellAmount = req.Amount
+	thisSell.StockSellAmount = int(math.Ceil(float64(req.Amount) / (thisSell.StockPrice * 100)))
+
+	fmt.Println(thisSell.StockPrice)
+	//	Check if they have enough stock to sell at this price
+	queryString := "UPDATE stocks SET amount = stocks.amount - $1 WHERE user_name = $2 AND stock_symbol = $3"
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	res, err := stmt.Exec(thisSell.StockSellAmount, req.UserId, thisSell.StockSymbol)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	numRows, err := res.RowsAffected()
+
+	if numRows < 1 {
+		failWithStatusCode(errors.New("Couldn't update portfolio"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	setSell = true
+	setSellValue = thisSell.StockSellAmount
+	//hit audit server
+
+	w.WriteHeader(http.StatusOK)
+
+}
+
+func cancelSetSellHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId      string
+		StockSymbol string
+	}{"", ""}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if setSell == false {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	//	Return stocks to portfolio
+	queryString := "UPDATE stocks SET amount = amount + $1 WHERE user_name = $2  AND stock_symbol = $3"
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	_, err = stmt.Exec(setSellValue, req.UserId, req.StockSymbol)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	setSell = false
+	setSellValue = 0
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId      string
+		StockSymbol string
+		Amount      int
+	}{"", "", 0}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if setSell == false {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+	triggerSell = true
+	triggerSellValue = req.Amount
+
+	//	Get a quote
+	commandString := req.UserId + "," + req.StockSymbol
+	quoteString, err := getQuote(commandString, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	// Parse Quote
+	quoteStringComponents := strings.Split(quoteString, ",")
+	thisBuy := Buy{}
+
+	//thisBuy.BuyTimestamp = buyTime
+	thisBuy.QuoteTimestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	thisBuy.QuoteCryptoKey = quoteStringComponents[4]
+	thisBuy.StockSymbol = quoteStringComponents[1]
+	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
+	thisBuy.BuyAmount = req.Amount
+
+	fmt.Println(thisBuy.StockPrice * 100)
+	fmt.Println(req.Amount)
+
+	if int(thisBuy.StockPrice*100) >= req.Amount {
+
+		//	Add funds to their account
+		sellFunds := setSellValue * int(thisBuy.StockPrice*100)
+
+		queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
+		stmt, err := db.Prepare(queryString)
+
+		if err != nil {
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			return
+		}
+
+		_, err = stmt.Exec(sellFunds, req.UserId)
+
+		if err != nil {
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			return
+		}
+
+		//if trigger goes, turn it off
+		triggerSell = false
+		triggerSellValue = 0
+		setSell = false
+		setSellValue = 0
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -548,5 +986,11 @@ func main() {
 	http.HandleFunc("/sell", sellHandler)
 	http.HandleFunc("/cancelSell", cancelSellHandler)
 	http.HandleFunc("/confirmSell", confirmSellHandler)
+	http.HandleFunc("/setBuy", setBuyHandler)
+	http.HandleFunc("/cancelSetBuy", cancelSetBuyHandler)
+	http.HandleFunc("/setBuyTrigger", setBuyTriggerHandler)
+	http.HandleFunc("/setSell", setSellHandler)
+	http.HandleFunc("/cancelSetSell", cancelSetSellHandler)
+	http.HandleFunc("/setSellTrigger", setSellTriggerHandler)
 	http.ListenAndServe(port, nil)
 }
