@@ -475,7 +475,49 @@ func cancelSellHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId string
+	}{""}
 
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if sellMap[req.UserId] == nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	latestSell := sellMap[req.UserId].Pop()
+
+	if latestSell == nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	//	Add funds to their account
+	sellFunds := latestSell.(Sell).StockSellAmount * int(latestSell.(Sell).StockPrice * 100)
+
+	queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	_, err = stmt.Exec(sellFunds, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func loadDB() *sql.DB {
