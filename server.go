@@ -430,6 +430,54 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func cancelSellHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId string
+	}{""}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if sellMap[req.UserId] == nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	latestSell := sellMap[req.UserId].Pop()
+
+	if latestSell == nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	//	Return stocks to portfolio
+	queryString := "UPDATE stocks SET amount = amount + $1 WHERE user_name = $2"
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	_, err = stmt.Exec(latestSell.(Sell).StockSellAmount, req.UserId)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
+
+}
+
 func loadDB() *sql.DB {
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "localhost", 5432, "moonshot", "hodl", "moonshot")
 	db, err := sql.Open("postgres", psqlInfo)
@@ -456,5 +504,7 @@ func main() {
 	http.HandleFunc("/cancelBuy", cancelBuyHandler)
 	http.HandleFunc("/confirmBuy", confirmBuyHandler)
 	http.HandleFunc("/sell", sellHandler)
+	http.HandleFunc("/cancelSell", cancelSellHandler)
+	http.HandleFunc("/confirmSell", confirmSellHandler)
 	http.ListenAndServe(port, nil)
 }
