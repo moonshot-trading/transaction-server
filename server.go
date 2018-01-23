@@ -112,7 +112,7 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := decoder.Decode(&req)
 
-	if err != nil || len(req.StockSymbol) < 3 {
+	if err != nil || len(req.StockSymbol) > 3 {
 		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
 		return
 	}
@@ -192,7 +192,6 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	}{"", "", 0}
 
 	err := decoder.Decode(&req)
-
 	if err != nil {
 		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
 		return
@@ -355,6 +354,7 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Println("commit buy", req, latestBuy, stockQuantity)
 	_, err = stmt.Exec(req.UserId, latestBuy.(Buy).StockSymbol, stockQuantity)
 
 	if err != nil {
