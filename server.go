@@ -26,7 +26,7 @@ var (
 )
 
 type Quote struct {
-	Price string
+	Price int
 	StockSymbol string
 	UserId string
 	Timestamp int
@@ -120,7 +120,7 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 	quoteStringComponents := strings.Split(quoteString, ",")
 
 	quote := Quote{}
-	quote.Price = quoteStringComponents[0]
+	quote.Price, _ = strconv.Atoi(quoteStringComponents[0])
 	quote.StockSymbol = quoteStringComponents[1]
 	quote.UserId = quoteStringComponents[2]
 	quote.Timestamp, _ = strconv.Atoi(quoteStringComponents[3])
@@ -131,7 +131,8 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
 		return
 	}
-
+	auditEvent := QuoteServer{Server:"1", Price:quote.Price, StockSymbol:quote.StockSymbol, Username:quote.UserId, QuoteServerTime:quote.Timestamp, Cryptokey:quote.CryptoKey}
+	audit(auditEvent)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, string(quoteJson))
 }
