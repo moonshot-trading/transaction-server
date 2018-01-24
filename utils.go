@@ -5,6 +5,8 @@ import (
     "net/http"
     "encoding/json"
     "bytes"
+    "strings"
+    "strconv"
 )
 
 func failOnError(err error, msg string) {
@@ -103,4 +105,9 @@ func (s Stack) Peek() interface{} {
         return s.topPtr.value
     }
     return nil
+}
+
+func floatStringToCents(val string) int {
+    cents , _:= strconv.Atoi(strings.Replace(val, ".", "", 1))
+    return cents
 }

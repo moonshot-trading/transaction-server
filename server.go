@@ -120,7 +120,7 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 	quoteStringComponents := strings.Split(quoteString, ",")
 
 	quote := Quote{}
-	quote.Price, _ = strconv.Atoi(quoteStringComponents[0])
+	quote.Price = floatStringToCents(quoteStringComponents[0])
 	quote.StockSymbol = quoteStringComponents[1]
 	quote.UserId = quoteStringComponents[2]
 	quote.Timestamp, _ = strconv.Atoi(quoteStringComponents[3])
