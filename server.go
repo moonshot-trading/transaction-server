@@ -22,6 +22,7 @@ var (
 	quoteServerPort  = 44415
 	db               = loadDB()
 	buyMap           = make(map[string]*Stack)
+	quoteMap		 = make(map[string]Quote)
 	sellMap          = make(map[string]*Stack)
 	setBuy           = false
 	setBuyValue      = 0
@@ -43,23 +44,15 @@ type Quote struct {
 
 func getQuote(commandString string, UserId string) (string, error) {
 	//	Check if the user exists, and if they have the necessary balance to request a quote
-	queryString := "SELECT funds FROM users WHERE user_name = $1"
-	stmt, err := db.Prepare(queryString)
+	stockSymbol := strings.Split(commandString, ",")[1]
+	
+	quoteTime := int(time.Now().Unix())
 
-	if err != nil {
-		return "", err
-	}
-
-	var funds int
-	err = stmt.QueryRow(UserId).Scan(&funds)
-
-	if err != nil {
-		return "", err
-	}
-
-	if funds < 5 {
-		//	Not enough money to get a quote
-		return "", errors.New("Insufficient Funds")
+	if cachedQuote, exists := quoteMap[stockSymbol]; exists {
+		if cachedQuote.Timestamp + 60 > quoteTime {
+			quoteString := cachedQuote.Price + "," + cachedQuote.StockSymbol + "," + cachedQuote.UserId + "," + strconv.Itoa(cachedQuote.Timestamp) + "," + cachedQuote.CryptoKey
+			return quoteString, nil
+		}
 	}
 
 	conn, err := net.Dial("tcp", "localhost:44415")
@@ -74,27 +67,19 @@ func getQuote(commandString string, UserId string) (string, error) {
 	buff := make([]byte, 1024)
 	length, _ := conn.Read(buff)
 
-	//	Apply the charge to the users account in the database
-	queryString = "UPDATE users SET funds = $1 WHERE user_name = $2"
-	stmt, err = db.Prepare(queryString)
-
-	if err != nil {
-		return "", err
-	}
-
-	res, err := stmt.Exec(funds-5, UserId)
-
-	if err != nil {
-		return "", err
-	}
-
-	numRows, err := res.RowsAffected()
-
-	if err != nil || numRows < 1 {
-		return "", errors.New("Couldn't Charge Account")
-	}
-
 	quoteString := string(buff[:length])
+
+	quoteStringComponents := strings.Split(quoteString, ",")
+    thisQuote := Quote{}
+
+    thisQuote.Price = quoteStringComponents[0]
+    thisQuote.StockSymbol = quoteStringComponents[1]
+    thisQuote.UserId = UserId
+    thisQuote.Timestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	thisQuote.CryptoKey = quoteStringComponents[4]
+	
+	quoteMap[stockSymbol] = thisQuote
+
 	return quoteString, nil
 }
 
