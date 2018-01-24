@@ -613,7 +613,9 @@ func setBuyHandler(w http.ResponseWriter, r *http.Request) {
 
 	setBuy = true
 	setBuyValue = req.Amount
-	//hit audit server
+
+	auditEventU := UserCommand{Server:SERVER, Command:"SET_BUY_AMOUNT", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:req.Amount}
+	audit(auditEventU)
 
 	//	Send response back to client
 	w.WriteHeader(http.StatusOK)
@@ -665,7 +667,9 @@ func cancelSetBuyHandler(w http.ResponseWriter, r *http.Request) {
 	//remove trigger also if it exists
 	triggerBuy = false
 	triggerBuyValue = 0
-	//hit audit server
+
+	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SET_BUY", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:0}
+	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -717,6 +721,9 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(thisBuy.StockPrice * 100)
 	fmt.Println(req.Amount)
 
+	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey}
+	audit(auditEventQ)
+
 	if int(thisBuy.StockPrice*100) <= req.Amount {
 
 		//we check the current value to see if the trigger goes right away
@@ -767,6 +774,9 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		triggerBuy = false
 		triggerBuyValue = 0
 	}
+
+	auditEventU := UserCommand{Server:SERVER, Command:"SET_BUY_TRIGGER", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount}
+	audit(auditEventU)
 
 	//	Send response back to client
 	w.WriteHeader(http.StatusOK)
@@ -833,6 +843,9 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	thisSell.SellAmount = req.Amount
 	thisSell.StockSellAmount = int(math.Ceil(float64(req.Amount) / (thisSell.StockPrice * 100)))
 
+	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisSell.StockSymbol, Username:req.UserId, QuoteServerTime:thisSell.QuoteTimestamp, Cryptokey:thisSell.QuoteCryptoKey}
+	audit(auditEventQ)
+
 	fmt.Println(thisSell.StockPrice)
 	//	Check if they have enough stock to sell at this price
 	queryString := "UPDATE stocks SET amount = stocks.amount - $1 WHERE user_name = $2 AND stock_symbol = $3"
@@ -859,7 +872,10 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 
 	setSell = true
 	setSellValue = thisSell.StockSellAmount
+
 	//hit audit server
+	auditEventU := UserCommand{Server:SERVER, Command:"SET_SELL_AMMOUNT", Username:req.UserId, StockSymbol:thisSell.StockSymbol, Filename:FILENAME, Funds:thisSell.SellAmount}
+	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
 
@@ -902,6 +918,9 @@ func cancelSetSellHandler(w http.ResponseWriter, r *http.Request) {
 
 	setSell = false
 	setSellValue = 0
+
+	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SET_SELL", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:0}
+	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -948,6 +967,9 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
 	thisBuy.BuyAmount = req.Amount
 
+	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey}
+	audit(auditEventQ)
+
 	fmt.Println(thisBuy.StockPrice * 100)
 	fmt.Println(req.Amount)
 
@@ -971,12 +993,18 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:thisBuy.BuyAmount}
+		audit(auditEventA)
+
 		//if trigger goes, turn it off
 		triggerSell = false
 		triggerSellValue = 0
 		setSell = false
 		setSellValue = 0
 	}
+
+	auditEventU := UserCommand{Server:SERVER, Command:"SET_SELL_TRIGGER", Username:req.UserId, StockSymbol:thisBuy.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount}
+	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
 }

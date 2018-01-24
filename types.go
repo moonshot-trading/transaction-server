@@ -61,7 +61,7 @@ type QuoteServer struct {
 	Price			int			`json:"price"`
 	StockSymbol		string		`json:"stockSymbol"`
 	Username		string		`json:"username"`
-	QuoteServerTime	int			`json:"quoteServerTime"`	
+	QuoteServerTime	int64			`json:"quoteServerTime"`
 	Cryptokey		string		`json:"cryptokey"`
 }
 
