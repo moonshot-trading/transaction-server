@@ -38,7 +38,7 @@ type Quote struct {
 	Price       string
 	StockSymbol string
 	UserId      string
-	Timestamp   int
+	Timestamp   int64
 	CryptoKey   string
 }
 
@@ -46,11 +46,11 @@ func getQuote(commandString string, UserId string) (string, error) {
 	//	Check if the user exists, and if they have the necessary balance to request a quote
 	stockSymbol := strings.Split(commandString, ",")[1]
 	
-	quoteTime := int(time.Now().Unix())
+	quoteTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
 
 	if cachedQuote, exists := quoteMap[stockSymbol]; exists {
-		if cachedQuote.Timestamp + 60 > quoteTime {
-			quoteString := cachedQuote.Price + "," + cachedQuote.StockSymbol + "," + cachedQuote.UserId + "," + strconv.Itoa(cachedQuote.Timestamp) + "," + cachedQuote.CryptoKey
+		if cachedQuote.Timestamp + 60000 > quoteTime {
+			quoteString := cachedQuote.Price + "," + cachedQuote.StockSymbol + "," + cachedQuote.UserId + "," + strconv.FormatInt(cachedQuote.Timestamp, 10) + "," + cachedQuote.CryptoKey
 			return quoteString, nil
 		}
 	}
@@ -75,7 +75,7 @@ func getQuote(commandString string, UserId string) (string, error) {
     thisQuote.Price = quoteStringComponents[0]
     thisQuote.StockSymbol = quoteStringComponents[1]
     thisQuote.UserId = UserId
-    thisQuote.Timestamp, _ = strconv.Atoi(quoteStringComponents[3])
+    thisQuote.Timestamp, _ = strconv.ParseInt(quoteStringComponents[3], 10, 64)
 	thisQuote.CryptoKey = quoteStringComponents[4]
 	
 	quoteMap[stockSymbol] = thisQuote
@@ -116,7 +116,7 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 	quote.Price = quoteStringComponents[0]
 	quote.StockSymbol = quoteStringComponents[1]
 	quote.UserId = quoteStringComponents[2]
-	quote.Timestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	quote.Timestamp, _ = strconv.ParseInt(quoteStringComponents[3], 10, 64)
 	quote.CryptoKey = quoteStringComponents[4]
 
 	quoteJson, err := json.Marshal(quote)
@@ -182,7 +182,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	buyTime := int(time.Now().Unix())
+	buyTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
 
 	//	Check if user has funds to buy at this price
 	queryString := "UPDATE users SET funds = users.funds - $1 WHERE user_name = $2"
@@ -222,7 +222,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy := Buy{}
 
 	thisBuy.BuyTimestamp = buyTime
-	thisBuy.QuoteTimestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	thisBuy.QuoteTimestamp, _ = strconv.ParseInt(quoteStringComponents[3], 10, 64)
 	thisBuy.QuoteCryptoKey = quoteStringComponents[4]
 	thisBuy.StockSymbol = quoteStringComponents[1]
 	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
@@ -366,7 +366,7 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sellTime := int(time.Now().Unix())
+	sellTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
 
 	//	Get a quote
 	commandString := req.UserId + "," + req.StockSymbol
@@ -382,7 +382,7 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 	thisSell := Sell{}
 
 	thisSell.SellTimestamp = sellTime
-	thisSell.QuoteTimestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	thisSell.QuoteTimestamp, _ = strconv.ParseInt(quoteStringComponents[3], 10, 64)
 	thisSell.QuoteCryptoKey = quoteStringComponents[4]
 	thisSell.StockSymbol = quoteStringComponents[1]
 	thisSell.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
@@ -670,7 +670,7 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy := Buy{}
 
 	//thisBuy.BuyTimestamp = buyTime
-	thisBuy.QuoteTimestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	thisBuy.QuoteTimestamp, _ = strconv.ParseInt(quoteStringComponents[3], 10, 64)
 	thisBuy.QuoteCryptoKey = quoteStringComponents[4]
 	thisBuy.StockSymbol = quoteStringComponents[1]
 	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
@@ -772,7 +772,7 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	setSell = false
 	setSellValue = 0
 
-	sellTime := int(time.Now().Unix())
+	sellTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
 
 	//	Get a quote
 	commandString := req.UserId + "," + req.StockSymbol
@@ -788,7 +788,7 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	thisSell := Sell{}
 
 	thisSell.SellTimestamp = sellTime
-	thisSell.QuoteTimestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	thisSell.QuoteTimestamp, _ = strconv.ParseInt(quoteStringComponents[3], 10, 64)
 	thisSell.QuoteCryptoKey = quoteStringComponents[4]
 	thisSell.StockSymbol = quoteStringComponents[1]
 	thisSell.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
@@ -904,7 +904,7 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy := Buy{}
 
 	//thisBuy.BuyTimestamp = buyTime
-	thisBuy.QuoteTimestamp, _ = strconv.Atoi(quoteStringComponents[3])
+	thisBuy.QuoteTimestamp, _ = strconv.ParseInt(quoteStringComponents[3], 10, 64)
 	thisBuy.QuoteCryptoKey = quoteStringComponents[4]
 	thisBuy.StockSymbol = quoteStringComponents[1]
 	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)

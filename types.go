@@ -1,8 +1,8 @@
 package main
 
 type Buy struct {
-	BuyTimestamp	int
-	QuoteTimestamp	int
+	BuyTimestamp	int64
+	QuoteTimestamp	int64
 	QuoteCryptoKey	string
 	StockSymbol		string
 	StockPrice		float64
@@ -10,8 +10,8 @@ type Buy struct {
 }
 
 type Sell struct {
-	SellTimestamp	int
-	QuoteTimestamp	int
+	SellTimestamp	int64
+	QuoteTimestamp	int64
 	QuoteCryptoKey	string
 	StockSymbol		string
 	StockPrice		float64
