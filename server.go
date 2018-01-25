@@ -1009,6 +1009,45 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId string
+	}{""}
+
+	err := decoder.Decode(&req)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	//	Get their current balance
+	queryString := "SELECT funds FROM users WHERE user_name = $1"
+
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		return
+	}
+
+	var userFunds int
+	err = stmt.QueryRow(req.UserId).Scan(&userFunds)
+
+	if err != nil {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	auditEvent := UserCommand{Server:SERVER, Command:"DISPLAY_SUMMARY", Username:req.UserId, StockSymbol:"", Filename:FILENAME, Funds:userFunds}
+
+	audit(auditEvent)
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "{\"funds\": %d}", userFunds)
+}
+
 func loadDB() *sql.DB {
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "localhost", 5432, "moonshot", "hodl", "moonshot")
 	db, err := sql.Open("postgres", psqlInfo)
@@ -1043,5 +1082,6 @@ func main() {
 	http.HandleFunc("/setSell", setSellHandler)
 	http.HandleFunc("/cancelSetSell", cancelSetSellHandler)
 	http.HandleFunc("/setSellTrigger", setSellTriggerHandler)
+	http.HandleFunc("/displaySummary", displaySummaryHandler)
 	http.ListenAndServe(port, nil)
 }
