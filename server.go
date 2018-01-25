@@ -370,7 +370,7 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
 		return
 	}
-	auditEventU := UserCommand{Server:SERVER, Command:"CONFIRM_BUY", Username:req.UserId, StockSymbol:latestBuy.(Buy).StockSymbol, Filename:FILENAME, Funds:latestBuy.(Buy).BuyAmount}
+	auditEventU := UserCommand{Server:SERVER, Command:"COMMIT_BUY", Username:req.UserId, StockSymbol:latestBuy.(Buy).StockSymbol, Filename:FILENAME, Funds:latestBuy.(Buy).BuyAmount}
 	audit(auditEventU)
 
 	//	Return resp to client
