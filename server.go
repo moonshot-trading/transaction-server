@@ -32,6 +32,8 @@ var (
 	setSellValue     = 0
 	triggerSell      = false
 	triggerSellValue = 0
+	SERVER = "1"
+	FILENAME = "1userWorkLoad"
 )
 
 type Quote struct {
@@ -124,7 +126,8 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
 		return
 	}
-
+	auditEvent := QuoteServer{Server:SERVER, Price:floatStringToCents(quote.Price), StockSymbol:quote.StockSymbol, Username:quote.UserId, QuoteServerTime:quote.Timestamp, Cryptokey:quote.CryptoKey}
+	audit(auditEvent)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, string(quoteJson))
 }
@@ -164,6 +167,9 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
 		return
 	}
+
+	auditEvent := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:req.Amount}
+	audit(auditEvent)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -208,6 +214,9 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	auditEventA := AccountTransaction{Server:SERVER, Action:"remove", Username:req.UserId, Funds:req.Amount}
+	audit(auditEventA)
+
 	//	Get a quote
 	commandString := req.UserId + "," + req.StockSymbol
 	quoteString, err := getQuote(commandString, req.UserId)
@@ -228,12 +237,18 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
 	thisBuy.BuyAmount = req.Amount
 
+	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey}
+	audit(auditEventQ)
+
 	//	Add buy to stack of pending buys
 	if buyMap[req.UserId] == nil {
 		buyMap[req.UserId] = &Stack{}
 	}
 
 	buyMap[req.UserId].Push(thisBuy)
+
+	auditEventU := UserCommand{Server:SERVER, Command:"BUY", Username:req.UserId, StockSymbol:thisBuy.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount}
+	audit(auditEventU)
 
 	//	Send response back to client
 	w.WriteHeader(http.StatusOK)
@@ -280,6 +295,12 @@ func cancelBuyHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
 		return
 	}
+
+	auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:latestBuy.(Buy).BuyAmount}
+	audit(auditEventA)
+
+	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_BUY", Username:req.UserId, StockSymbol:latestBuy.(Buy).StockSymbol, Filename:FILENAME, Funds:latestBuy.(Buy).BuyAmount}
+	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -330,6 +351,9 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:refundAmount}
+	audit(auditEventA)
+
 	//	Give stocks to user
 	queryString = "INSERT INTO stocks(user_name, stock_symbol, amount) VALUES($1, $2, $3) ON CONFLICT (user_name, stock_symbol) DO UPDATE SET amount = stocks.amount + $3"
 	stmt, err = db.Prepare(queryString)
@@ -346,6 +370,8 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
 		return
 	}
+	auditEventU := UserCommand{Server:SERVER, Command:"COMMIT_BUY", Username:req.UserId, StockSymbol:latestBuy.(Buy).StockSymbol, Filename:FILENAME, Funds:latestBuy.(Buy).BuyAmount}
+	audit(auditEventU)
 
 	//	Return resp to client
 	w.WriteHeader(http.StatusOK)
@@ -419,6 +445,9 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 
 	sellMap[req.UserId].Push(thisSell)
 
+	auditEventU := UserCommand{Server:SERVER, Command:"SELL", Username:req.UserId, StockSymbol:thisSell.StockSymbol, Filename:FILENAME, Funds:thisSell.SellAmount}
+	audit(auditEventU)
+
 	w.WriteHeader(http.StatusOK)
 
 }
@@ -463,6 +492,9 @@ func cancelSellHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
 		return
 	}
+
+	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SELL", Username:req.UserId, StockSymbol:latestSell.(Sell).StockSymbol, Filename:FILENAME, Funds:latestSell.(Sell).SellAmount}
+	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -509,6 +541,12 @@ func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
 		return
 	}
+
+	auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:latestSell.(Sell).SellAmount}
+	audit(auditEventA)
+
+	auditEventU := UserCommand{Server:SERVER, Command:"CONFIRM_SELL", Username:req.UserId, StockSymbol:latestSell.(Sell).StockSymbol, Filename:FILENAME, Funds:latestSell.(Sell).SellAmount}
+	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -575,7 +613,9 @@ func setBuyHandler(w http.ResponseWriter, r *http.Request) {
 
 	setBuy = true
 	setBuyValue = req.Amount
-	//hit audit server
+
+	auditEventU := UserCommand{Server:SERVER, Command:"SET_BUY_AMOUNT", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:req.Amount}
+	audit(auditEventU)
 
 	//	Send response back to client
 	w.WriteHeader(http.StatusOK)
@@ -627,7 +667,9 @@ func cancelSetBuyHandler(w http.ResponseWriter, r *http.Request) {
 	//remove trigger also if it exists
 	triggerBuy = false
 	triggerBuyValue = 0
-	//hit audit server
+
+	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SET_BUY", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:0}
+	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -679,6 +721,9 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(thisBuy.StockPrice * 100)
 	fmt.Println(req.Amount)
 
+	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey}
+	audit(auditEventQ)
+
 	if int(thisBuy.StockPrice*100) <= req.Amount {
 
 		//we check the current value to see if the trigger goes right away
@@ -729,6 +774,9 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		triggerBuy = false
 		triggerBuyValue = 0
 	}
+
+	auditEventU := UserCommand{Server:SERVER, Command:"SET_BUY_TRIGGER", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount}
+	audit(auditEventU)
 
 	//	Send response back to client
 	w.WriteHeader(http.StatusOK)
@@ -795,6 +843,9 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	thisSell.SellAmount = req.Amount
 	thisSell.StockSellAmount = int(math.Ceil(float64(req.Amount) / (thisSell.StockPrice * 100)))
 
+	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisSell.StockSymbol, Username:req.UserId, QuoteServerTime:thisSell.QuoteTimestamp, Cryptokey:thisSell.QuoteCryptoKey}
+	audit(auditEventQ)
+
 	fmt.Println(thisSell.StockPrice)
 	//	Check if they have enough stock to sell at this price
 	queryString := "UPDATE stocks SET amount = stocks.amount - $1 WHERE user_name = $2 AND stock_symbol = $3"
@@ -821,7 +872,10 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 
 	setSell = true
 	setSellValue = thisSell.StockSellAmount
+
 	//hit audit server
+	auditEventU := UserCommand{Server:SERVER, Command:"SET_SELL_AMMOUNT", Username:req.UserId, StockSymbol:thisSell.StockSymbol, Filename:FILENAME, Funds:thisSell.SellAmount}
+	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
 
@@ -864,6 +918,9 @@ func cancelSetSellHandler(w http.ResponseWriter, r *http.Request) {
 
 	setSell = false
 	setSellValue = 0
+
+	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SET_SELL", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:0}
+	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -910,6 +967,9 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
 	thisBuy.BuyAmount = req.Amount
 
+	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey}
+	audit(auditEventQ)
+
 	fmt.Println(thisBuy.StockPrice * 100)
 	fmt.Println(req.Amount)
 
@@ -933,12 +993,18 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:thisBuy.BuyAmount}
+		audit(auditEventA)
+
 		//if trigger goes, turn it off
 		triggerSell = false
 		triggerSellValue = 0
 		setSell = false
 		setSellValue = 0
 	}
+
+	auditEventU := UserCommand{Server:SERVER, Command:"SET_SELL_TRIGGER", Username:req.UserId, StockSymbol:thisBuy.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount}
+	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
 }

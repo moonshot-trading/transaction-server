@@ -2,7 +2,11 @@ package main
 
 import (
 	"fmt"
-	"net/http"
+    "net/http"
+    "encoding/json"
+    "bytes"
+    "strings"
+    "strconv"
 )
 
 func failOnError(err error, msg string) {
@@ -22,6 +26,38 @@ func failGracefully(err error, msg string) {
     if err != nil {
         fmt.Printf("%s: %s", msg, err)
     }
+}
+
+func sendToAuditServer(auditStruct interface{}, path string) {
+	jsonValue, _ := json.Marshal(auditStruct)
+	resp, _ := http.Post("http://localhost:44417/"+path, "application/json", bytes.NewBuffer(jsonValue))
+	defer resp.Body.Close()
+}
+
+func audit(auditStruct interface{}) {
+    var path string
+    //  Check the type of auditStruct
+    switch auditStruct.(type) {
+    case AccountTransaction:
+        path = "accountTransaction"
+
+    case SystemEvent:
+        path = "systemEvent"
+
+    case ErrorEvent:
+        path = "errorEvent"
+
+    case DebugEvent:
+        path = "debugEvent"
+
+    case QuoteServer:
+        path = "quoteServer"
+
+    case UserCommand:
+        path = "userCommand"
+    }
+
+    sendToAuditServer(auditStruct, path)
 }
 
 //  Stack implementation
@@ -69,4 +105,9 @@ func (s Stack) Peek() interface{} {
         return s.topPtr.value
     }
     return nil
+}
+
+func floatStringToCents(val string) int {
+    cents , _:= strconv.Atoi(strings.Replace(val, ".", "", 1))
+    return cents
 }
