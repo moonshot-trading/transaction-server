@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -1063,6 +1064,39 @@ func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "{\"funds\": %d}", userFunds)
 }
 
+func dumpLogHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	req := struct {
+		UserId   string
+		FileName string
+	}{"", ""}
+
+	err := decoder.Decode(&req)
+
+	if err != nil || req.FileName == "" {
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		return
+	}
+
+	if req.UserId == "" {
+		//	Dumplog of everything
+		jsonValue, _ := json.Marshal(req)
+		resp, err := http.Post("http://localhost:44417/dumpLog", "application/json", bytes.NewBuffer(jsonValue))
+		failOnError(err, "Error sending request")
+		defer resp.Body.Close()
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	//	Dumplog of only this users transactions
+	jsonValue, _ := json.Marshal(req)
+	resp, err := http.Post("http://localhost:44417/dumpLog", "application/json", bytes.NewBuffer(jsonValue))
+	failOnError(err, "Error sending request")
+	defer resp.Body.Close()
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func loadDB() *sql.DB {
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "localhost", 5432, "moonshot", "hodl", "moonshot")
 	db, err := sql.Open("postgres", psqlInfo)
@@ -1098,5 +1132,6 @@ func main() {
 	http.HandleFunc("/cancelSetSell", cancelSetSellHandler)
 	http.HandleFunc("/setSellTrigger", setSellTriggerHandler)
 	http.HandleFunc("/displaySummary", displaySummaryHandler)
+	http.HandleFunc("/dumpLog", dumpLogHandler)	
 	http.ListenAndServe(port, nil)
 }
