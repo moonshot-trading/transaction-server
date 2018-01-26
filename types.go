@@ -21,19 +21,21 @@ type Sell struct {
 
 //	Auditing types
 type AccountTransaction struct {
-	Server		string		`json:"server"`
-	Action		string		`json:"action"`
-	Username	string		`json:"username"`
-	Funds		int			`json:"funds"`
+	Server			string		`json:"server"`
+	Action			string		`json:"action"`
+	Username		string		`json:"username"`
+	Funds			int			`json:"funds"`
+	TransactionNum 	int			`json:"transactionNum"`
 }
 
 type SystemEvent struct {
-	Server		string		`json:"server"`
-	Command		string		`json:"command"`
-	StockSymbol	string		`json:"stockSymbol"`
-	Username	string		`json:"username"`
-	Filename	string		`json:"filename"`	
-	Funds		int			`json:"funds"`
+	Server			string		`json:"server"`
+	Command			string		`json:"command"`
+	StockSymbol		string		`json:"stockSymbol"`
+	Username		string		`json:"username"`
+	Filename		string		`json:"filename"`	
+	Funds			int			`json:"funds"`
+	TransactionNum 	int			`json:"transactionNum"`
 }
 
 type ErrorEvent struct {
@@ -44,6 +46,7 @@ type ErrorEvent struct {
 	Funds			int			`json:"funds"`
 	Username		string		`json:"username"`
 	ErrorMessage	string		`json:"errorMessage"`
+	TransactionNum 	int			`json:"transactionNum"`
 }
 
 type DebugEvent struct {
@@ -53,7 +56,8 @@ type DebugEvent struct {
 	Filename		string		`json:"filename"`	
 	Funds			int			`json:"funds"`
 	Username		string		`json:"username"`
-	DebugMessage	string		`json:"debugMessage"`	
+	DebugMessage	string		`json:"debugMessage"`
+	TransactionNum 	int			`json:"transactionNum"`	
 }
 
 type QuoteServer struct {
@@ -61,8 +65,9 @@ type QuoteServer struct {
 	Price			int			`json:"price"`
 	StockSymbol		string		`json:"stockSymbol"`
 	Username		string		`json:"username"`
-	QuoteServerTime	int64			`json:"quoteServerTime"`
+	QuoteServerTime	int64		`json:"quoteServerTime"`
 	Cryptokey		string		`json:"cryptokey"`
+	TransactionNum 	int			`json:"transactionNum"`	
 }
 
 type UserCommand struct {
@@ -70,6 +75,7 @@ type UserCommand struct {
 	Command			string		`json:"command"`
 	Username		string		`json:"username"`
 	StockSymbol		string		`json:"stockSymbol"`
-	Filename		string		`json:"filename"`	
-	Funds			int			`json:"funds"`	
+	Filename		string		`json:"filename"`
+	Funds			int			`json:"funds"`
+	TransactionNum 	int			`json:"transactionNum"`	
 }

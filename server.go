@@ -95,7 +95,8 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 	req := struct {
 		UserId      string
 		StockSymbol string
-	}{"", ""}
+		TransactionNum int
+	}{"", "", 0}
 
 	err := decoder.Decode(&req)
 
@@ -126,7 +127,7 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
 		return
 	}
-	auditEvent := QuoteServer{Server:SERVER, Price:floatStringToCents(quote.Price), StockSymbol:quote.StockSymbol, Username:quote.UserId, QuoteServerTime:quote.Timestamp, Cryptokey:quote.CryptoKey}
+	auditEvent := QuoteServer{Server:SERVER, Price:floatStringToCents(quote.Price), StockSymbol:quote.StockSymbol, Username:quote.UserId, QuoteServerTime:quote.Timestamp, Cryptokey:quote.CryptoKey, TransactionNum:req.TransactionNum}
 	audit(auditEvent)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, string(quoteJson))
@@ -137,7 +138,8 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 	req := struct {
 		UserId string
 		Amount int
-	}{"", 0}
+		TransactionNum int
+	}{"", 0, 0}
 
 	err := decoder.Decode(&req)
 
@@ -168,7 +170,7 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditEvent := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:req.Amount}
+	auditEvent := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:req.Amount, TransactionNum:req.TransactionNum}
 	audit(auditEvent)
 
 	w.WriteHeader(http.StatusOK)
@@ -180,7 +182,8 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 		UserId      string
 		StockSymbol string
 		Amount      int
-	}{"", "", 0}
+		TransactionNum int
+	}{"", "", 0, 0}
 
 	err := decoder.Decode(&req)
 	if err != nil {
@@ -214,7 +217,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditEventA := AccountTransaction{Server:SERVER, Action:"remove", Username:req.UserId, Funds:req.Amount}
+	auditEventA := AccountTransaction{Server:SERVER, Action:"remove", Username:req.UserId, Funds:req.Amount, TransactionNum:req.TransactionNum}
 	audit(auditEventA)
 
 	//	Get a quote
@@ -237,7 +240,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
 	thisBuy.BuyAmount = req.Amount
 
-	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey}
+	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey, TransactionNum:req.TransactionNum}
 	audit(auditEventQ)
 
 	//	Add buy to stack of pending buys
@@ -247,7 +250,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 
 	buyMap[req.UserId].Push(thisBuy)
 
-	auditEventU := UserCommand{Server:SERVER, Command:"BUY", Username:req.UserId, StockSymbol:thisBuy.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount}
+	auditEventU := UserCommand{Server:SERVER, Command:"BUY", Username:req.UserId, StockSymbol:thisBuy.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount, TransactionNum:req.TransactionNum}
 	audit(auditEventU)
 
 	//	Send response back to client
@@ -259,7 +262,8 @@ func cancelBuyHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
 		UserId string
-	}{""}
+		TransactionNum int
+	}{"", 0}
 
 	err := decoder.Decode(&req)
 
@@ -296,10 +300,10 @@ func cancelBuyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:latestBuy.(Buy).BuyAmount}
+	auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:latestBuy.(Buy).BuyAmount, TransactionNum:req.TransactionNum}
 	audit(auditEventA)
 
-	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_BUY", Username:req.UserId, StockSymbol:latestBuy.(Buy).StockSymbol, Filename:FILENAME, Funds:latestBuy.(Buy).BuyAmount}
+	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_BUY", Username:req.UserId, StockSymbol:latestBuy.(Buy).StockSymbol, Filename:FILENAME, Funds:latestBuy.(Buy).BuyAmount, TransactionNum:req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -309,7 +313,8 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
 		UserId string
-	}{""}
+		TransactionNum int
+	}{"", 0}
 
 	err := decoder.Decode(&req)
 
@@ -351,7 +356,7 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:refundAmount}
+	auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:refundAmount, TransactionNum:req.TransactionNum}
 	audit(auditEventA)
 
 	//	Give stocks to user
@@ -370,7 +375,7 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
 		return
 	}
-	auditEventU := UserCommand{Server:SERVER, Command:"COMMIT_BUY", Username:req.UserId, StockSymbol:latestBuy.(Buy).StockSymbol, Filename:FILENAME, Funds:latestBuy.(Buy).BuyAmount}
+	auditEventU := UserCommand{Server:SERVER, Command:"COMMIT_BUY", Username:req.UserId, StockSymbol:latestBuy.(Buy).StockSymbol, Filename:FILENAME, Funds:latestBuy.(Buy).BuyAmount, TransactionNum:req.TransactionNum}
 	audit(auditEventU)
 
 	//	Return resp to client
@@ -383,7 +388,8 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 		UserId      string
 		StockSymbol string
 		Amount      int
-	}{"", "", 0}
+		TransactionNum int
+	}{"", "", 0, 0}
 
 	err := decoder.Decode(&req)
 
@@ -445,7 +451,7 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 
 	sellMap[req.UserId].Push(thisSell)
 
-	auditEventU := UserCommand{Server:SERVER, Command:"SELL", Username:req.UserId, StockSymbol:thisSell.StockSymbol, Filename:FILENAME, Funds:thisSell.SellAmount}
+	auditEventU := UserCommand{Server:SERVER, Command:"SELL", Username:req.UserId, StockSymbol:thisSell.StockSymbol, Filename:FILENAME, Funds:thisSell.SellAmount, TransactionNum:req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -456,7 +462,8 @@ func cancelSellHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
 		UserId string
-	}{""}
+		TransactionNum int
+	}{"", 0}
 
 	err := decoder.Decode(&req)
 
@@ -493,7 +500,7 @@ func cancelSellHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SELL", Username:req.UserId, StockSymbol:latestSell.(Sell).StockSymbol, Filename:FILENAME, Funds:latestSell.(Sell).SellAmount}
+	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SELL", Username:req.UserId, StockSymbol:latestSell.(Sell).StockSymbol, Filename:FILENAME, Funds:latestSell.(Sell).SellAmount, TransactionNum:req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -503,7 +510,8 @@ func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
 		UserId string
-	}{""}
+		TransactionNum int
+	}{"", 0}
 
 	err := decoder.Decode(&req)
 
@@ -542,10 +550,10 @@ func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:latestSell.(Sell).SellAmount}
+	auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:latestSell.(Sell).SellAmount, TransactionNum:req.TransactionNum}
 	audit(auditEventA)
 
-	auditEventU := UserCommand{Server:SERVER, Command:"CONFIRM_SELL", Username:req.UserId, StockSymbol:latestSell.(Sell).StockSymbol, Filename:FILENAME, Funds:latestSell.(Sell).SellAmount}
+	auditEventU := UserCommand{Server:SERVER, Command:"CONFIRM_SELL", Username:req.UserId, StockSymbol:latestSell.(Sell).StockSymbol, Filename:FILENAME, Funds:latestSell.(Sell).SellAmount, TransactionNum:req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -557,7 +565,8 @@ func setBuyHandler(w http.ResponseWriter, r *http.Request) {
 		UserId      string
 		StockSymbol string
 		Amount      int
-	}{"", "", 0}
+		TransactionNum int
+	}{"", "", 0, 0}
 
 	err := decoder.Decode(&req)
 
@@ -614,7 +623,7 @@ func setBuyHandler(w http.ResponseWriter, r *http.Request) {
 	setBuy = true
 	setBuyValue = req.Amount
 
-	auditEventU := UserCommand{Server:SERVER, Command:"SET_BUY_AMOUNT", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:req.Amount}
+	auditEventU := UserCommand{Server:SERVER, Command:"SET_BUY_AMOUNT", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:req.Amount, TransactionNum:req.TransactionNum}
 	audit(auditEventU)
 
 	//	Send response back to client
@@ -628,7 +637,8 @@ func cancelSetBuyHandler(w http.ResponseWriter, r *http.Request) {
 	req := struct {
 		UserId      string
 		StockSymbol string
-	}{"", ""}
+		TransactionNum int
+	}{"", "", 0}
 
 	err := decoder.Decode(&req)
 
@@ -668,7 +678,7 @@ func cancelSetBuyHandler(w http.ResponseWriter, r *http.Request) {
 	triggerBuy = false
 	triggerBuyValue = 0
 
-	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SET_BUY", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:0}
+	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SET_BUY", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:0, TransactionNum:req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -680,7 +690,8 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		UserId      string
 		StockSymbol string
 		Amount      int
-	}{"", "", 0}
+		TransactionNum int
+	}{"", "", 0, 0}
 
 	err := decoder.Decode(&req)
 
@@ -721,7 +732,7 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(thisBuy.StockPrice * 100)
 	fmt.Println(req.Amount)
 
-	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey}
+	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey, TransactionNum:req.TransactionNum}
 	audit(auditEventQ)
 
 	if int(thisBuy.StockPrice*100) <= req.Amount {
@@ -775,7 +786,7 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		triggerBuyValue = 0
 	}
 
-	auditEventU := UserCommand{Server:SERVER, Command:"SET_BUY_TRIGGER", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount}
+	auditEventU := UserCommand{Server:SERVER, Command:"SET_BUY_TRIGGER", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount, TransactionNum:req.TransactionNum}
 	audit(auditEventU)
 
 	//	Send response back to client
@@ -789,7 +800,8 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 		UserId      string
 		StockSymbol string
 		Amount      int
-	}{"", "", 0}
+		TransactionNum int
+	}{"", "", 0, 0}
 
 	err := decoder.Decode(&req)
 
@@ -843,7 +855,7 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	thisSell.SellAmount = req.Amount
 	thisSell.StockSellAmount = int(math.Ceil(float64(req.Amount) / (thisSell.StockPrice * 100)))
 
-	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisSell.StockSymbol, Username:req.UserId, QuoteServerTime:thisSell.QuoteTimestamp, Cryptokey:thisSell.QuoteCryptoKey}
+	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisSell.StockSymbol, Username:req.UserId, QuoteServerTime:thisSell.QuoteTimestamp, Cryptokey:thisSell.QuoteCryptoKey, TransactionNum:req.TransactionNum}
 	audit(auditEventQ)
 
 	fmt.Println(thisSell.StockPrice)
@@ -874,7 +886,7 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	setSellValue = thisSell.StockSellAmount
 
 	//hit audit server
-	auditEventU := UserCommand{Server:SERVER, Command:"SET_SELL_AMMOUNT", Username:req.UserId, StockSymbol:thisSell.StockSymbol, Filename:FILENAME, Funds:thisSell.SellAmount}
+	auditEventU := UserCommand{Server:SERVER, Command:"SET_SELL_AMMOUNT", Username:req.UserId, StockSymbol:thisSell.StockSymbol, Filename:FILENAME, Funds:thisSell.SellAmount, TransactionNum:req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -886,7 +898,8 @@ func cancelSetSellHandler(w http.ResponseWriter, r *http.Request) {
 	req := struct {
 		UserId      string
 		StockSymbol string
-	}{"", ""}
+		TransactionNum int
+	}{"", "", 0}
 
 	err := decoder.Decode(&req)
 
@@ -919,7 +932,7 @@ func cancelSetSellHandler(w http.ResponseWriter, r *http.Request) {
 	setSell = false
 	setSellValue = 0
 
-	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SET_SELL", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:0}
+	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SET_SELL", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:0, TransactionNum:req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -931,7 +944,8 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		UserId      string
 		StockSymbol string
 		Amount      int
-	}{"", "", 0}
+		TransactionNum int
+	}{"", "", 0, 0}
 
 	err := decoder.Decode(&req)
 
@@ -967,7 +981,7 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
 	thisBuy.BuyAmount = req.Amount
 
-	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey}
+	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey, TransactionNum:req.TransactionNum}
 	audit(auditEventQ)
 
 	fmt.Println(thisBuy.StockPrice * 100)
@@ -1003,7 +1017,7 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		setSellValue = 0
 	}
 
-	auditEventU := UserCommand{Server:SERVER, Command:"SET_SELL_TRIGGER", Username:req.UserId, StockSymbol:thisBuy.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount}
+	auditEventU := UserCommand{Server:SERVER, Command:"SET_SELL_TRIGGER", Username:req.UserId, StockSymbol:thisBuy.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount, TransactionNum:req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -1013,7 +1027,8 @@ func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
 		UserId string
-	}{""}
+		TransactionNum int
+	}{"", 0}
 
 	err := decoder.Decode(&req)
 
@@ -1040,7 +1055,7 @@ func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditEvent := UserCommand{Server:SERVER, Command:"DISPLAY_SUMMARY", Username:req.UserId, StockSymbol:"", Filename:FILENAME, Funds:userFunds}
+	auditEvent := UserCommand{Server:SERVER, Command:"DISPLAY_SUMMARY", Username:req.UserId, StockSymbol:"", Filename:FILENAME, Funds:userFunds, TransactionNum:req.TransactionNum}
 
 	audit(auditEvent)
 
