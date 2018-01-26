@@ -78,7 +78,7 @@ func getQuote(commandString string, UserId string) (string, error) {
     thisQuote.StockSymbol = quoteStringComponents[1]
     thisQuote.UserId = UserId
     thisQuote.Timestamp, _ = strconv.ParseInt(quoteStringComponents[3], 10, 64)
-	thisQuote.CryptoKey = quoteStringComponents[4]
+	thisQuote.CryptoKey = 	strings.Replace(quoteStringComponents[4], "\n", "", 2)
 	
 	quoteMap[stockSymbol] = thisQuote
 
