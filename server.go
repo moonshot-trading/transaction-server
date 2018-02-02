@@ -23,7 +23,7 @@ var (
 	quoteServerPort  = 44415
 	db               = loadDB()
 	buyMap           = make(map[string]*Stack)
-	quoteMap		 = make(map[string]Quote)
+	quoteMap         = make(map[string]Quote)
 	sellMap          = make(map[string]*Stack)
 	setBuy           = false
 	setBuyValue      = 0
@@ -33,8 +33,8 @@ var (
 	setSellValue     = 0
 	triggerSell      = false
 	triggerSellValue = 0
-	SERVER = "1"
-	FILENAME = "1userWorkLoad"
+	SERVER           = "1"
+	FILENAME         = "1userWorkLoad"
 )
 
 type Quote struct {
@@ -48,11 +48,11 @@ type Quote struct {
 func getQuote(commandString string, UserId string) (string, error) {
 	//	Check if the user exists, and if they have the necessary balance to request a quote
 	stockSymbol := strings.Split(commandString, ",")[1]
-	
+
 	quoteTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
 
 	if cachedQuote, exists := quoteMap[stockSymbol]; exists {
-		if cachedQuote.Timestamp + 60000 > quoteTime {
+		if cachedQuote.Timestamp+60000 > quoteTime {
 			quoteString := cachedQuote.Price + "," + cachedQuote.StockSymbol + "," + cachedQuote.UserId + "," + strconv.FormatInt(cachedQuote.Timestamp, 10) + "," + cachedQuote.CryptoKey
 			return quoteString, nil
 		}
@@ -73,14 +73,14 @@ func getQuote(commandString string, UserId string) (string, error) {
 	quoteString := string(buff[:length])
 
 	quoteStringComponents := strings.Split(quoteString, ",")
-    thisQuote := Quote{}
+	thisQuote := Quote{}
 
-    thisQuote.Price = quoteStringComponents[0]
-    thisQuote.StockSymbol = quoteStringComponents[1]
-    thisQuote.UserId = UserId
-    thisQuote.Timestamp, _ = strconv.ParseInt(quoteStringComponents[3], 10, 64)
-	thisQuote.CryptoKey = 	strings.Replace(quoteStringComponents[4], "\n", "", 2)
-	
+	thisQuote.Price = quoteStringComponents[0]
+	thisQuote.StockSymbol = quoteStringComponents[1]
+	thisQuote.UserId = UserId
+	thisQuote.Timestamp, _ = strconv.ParseInt(quoteStringComponents[3], 10, 64)
+	thisQuote.CryptoKey = strings.Replace(quoteStringComponents[4], "\n", "", 2)
+
 	quoteMap[stockSymbol] = thisQuote
 
 	return quoteString, nil
@@ -94,15 +94,16 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 func quoteHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId      string
-		StockSymbol string
+		UserId         string
+		StockSymbol    string
 		TransactionNum int
 	}{"", "", 0}
 
 	err := decoder.Decode(&req)
 
 	if err != nil || len(req.StockSymbol) > 3 {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "QUOTE", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Stock symbol string too long", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -110,7 +111,8 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 	quoteString, err := getQuote(commandString, req.UserId)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "QUOTE", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Error receiving quote", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -125,11 +127,14 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 
 	quoteJson, err := json.Marshal(quote)
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "QUOTE", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Error reading quote", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
-	auditEvent := QuoteServer{Server:SERVER, Price:floatStringToCents(quote.Price), StockSymbol:quote.StockSymbol, Username:quote.UserId, QuoteServerTime:quote.Timestamp, Cryptokey:quote.CryptoKey, TransactionNum:req.TransactionNum}
+
+	auditEvent := QuoteServer{Server: SERVER, Price: floatStringToCents(quote.Price), StockSymbol: quote.StockSymbol, Username: quote.UserId, QuoteServerTime: quote.Timestamp, Cryptokey: quote.CryptoKey, TransactionNum: req.TransactionNum}
 	audit(auditEvent)
+
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, string(quoteJson))
 }
@@ -137,15 +142,16 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 func addHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId string
-		Amount int
+		UserId         string
+		Amount         int
 		TransactionNum int
 	}{"", 0, 0}
 
 	err := decoder.Decode(&req)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "ADD", StockSymbol: "", Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -153,25 +159,28 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "ADD", StockSymbol: "", Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adding funds", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	res, err := stmt.Exec(req.UserId, req.Amount)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "ADD", StockSymbol: "", Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adding funds", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	numRows, err := res.RowsAffected()
 
 	if numRows < 1 {
-		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "ADD", StockSymbol: "", Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adding funds", TransactionNum: req.TransactionNum}
+		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
-	auditEvent := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:req.Amount, TransactionNum:req.TransactionNum}
+	auditEvent := AccountTransaction{Server: SERVER, Action: "add", Username: req.UserId, Funds: req.Amount, TransactionNum: req.TransactionNum}
 	audit(auditEvent)
 
 	w.WriteHeader(http.StatusOK)
@@ -180,15 +189,16 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 func buyHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId      string
-		StockSymbol string
-		Amount      int
+		UserId         string
+		StockSymbol    string
+		Amount         int
 		TransactionNum int
 	}{"", "", 0, 0}
 
 	err := decoder.Decode(&req)
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -200,25 +210,29 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Internal Server Error", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	res, err := stmt.Exec(req.Amount, req.UserId)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Could not reserve funds for BUY", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	numRows, err := res.RowsAffected()
 
 	if numRows < 1 {
-		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Could not reserve funds for BUY", TransactionNum: req.TransactionNum}
+		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
-	auditEventA := AccountTransaction{Server:SERVER, Action:"remove", Username:req.UserId, Funds:req.Amount, TransactionNum:req.TransactionNum}
+	//	Audit removal of funds from account
+	auditEventA := AccountTransaction{Server: SERVER, Action: "remove", Username: req.UserId, Funds: req.Amount, TransactionNum: req.TransactionNum}
 	audit(auditEventA)
 
 	//	Get a quote
@@ -226,7 +240,8 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	quoteString, err := getQuote(commandString, req.UserId)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error getting quote", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -241,7 +256,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
 	thisBuy.BuyAmount = req.Amount
 
-	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey, TransactionNum:req.TransactionNum}
+	auditEventQ := QuoteServer{Server: SERVER, Price: floatStringToCents(quoteStringComponents[0]), StockSymbol: thisBuy.StockSymbol, Username: req.UserId, QuoteServerTime: thisBuy.QuoteTimestamp, Cryptokey: thisBuy.QuoteCryptoKey, TransactionNum: req.TransactionNum}
 	audit(auditEventQ)
 
 	//	Add buy to stack of pending buys
@@ -251,7 +266,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 
 	buyMap[req.UserId].Push(thisBuy)
 
-	auditEventU := UserCommand{Server:SERVER, Command:"BUY", Username:req.UserId, StockSymbol:thisBuy.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount, TransactionNum:req.TransactionNum}
+	auditEventU := UserCommand{Server: SERVER, Command: "BUY", Username: req.UserId, StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
 	//	Send response back to client
@@ -262,26 +277,23 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 func cancelBuyHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId string
+		UserId         string
 		TransactionNum int
 	}{"", 0}
 
 	err := decoder.Decode(&req)
 
-	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
-		return
-	}
-
-	if buyMap[req.UserId] == nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+	if err != nil || buyMap[req.UserId] == nil {
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "No pending BUY", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
 	latestBuy := buyMap[req.UserId].Pop()
 
 	if latestBuy == nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "No pending BUY", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -290,21 +302,23 @@ func cancelBuyHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, Username: req.UserId, ErrorMessage: "Error replacing funds", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	_, err = stmt.Exec(latestBuy.(Buy).BuyAmount, req.UserId)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, Username: req.UserId, ErrorMessage: "Error replacing funds", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
-	auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:latestBuy.(Buy).BuyAmount, TransactionNum:req.TransactionNum}
+	auditEventA := AccountTransaction{Server: SERVER, Action: "add", Username: req.UserId, Funds: latestBuy.(Buy).BuyAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventA)
 
-	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_BUY", Username:req.UserId, StockSymbol:latestBuy.(Buy).StockSymbol, Filename:FILENAME, Funds:latestBuy.(Buy).BuyAmount, TransactionNum:req.TransactionNum}
+	auditEventU := UserCommand{Server: SERVER, Command: "CANCEL_BUY", Username: req.UserId, StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -313,26 +327,23 @@ func cancelBuyHandler(w http.ResponseWriter, r *http.Request) {
 func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId string
+		UserId         string
 		TransactionNum int
 	}{"", 0}
 
 	err := decoder.Decode(&req)
 
-	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
-		return
-	}
-
-	if buyMap[req.UserId] == nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+	if err != nil || buyMap[req.UserId] == nil {
+		auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_BUY", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "No pending buy", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
 	latestBuy := buyMap[req.UserId].Pop()
 
 	if latestBuy == nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_BUY", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "No pending buy", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -346,18 +357,20 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_BUY", StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, Username: req.UserId, ErrorMessage: "Error purchasing stock", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	_, err = stmt.Exec(refundAmount, req.UserId)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_BUY", StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, Username: req.UserId, ErrorMessage: "Error purchasing stock", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
-	auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:refundAmount, TransactionNum:req.TransactionNum}
+	auditEventA := AccountTransaction{Server: SERVER, Action: "add", Username: req.UserId, Funds: refundAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventA)
 
 	//	Give stocks to user
@@ -365,7 +378,8 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err = db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_BUY", StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, Username: req.UserId, ErrorMessage: "Error purchasing stock", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -373,10 +387,11 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 	_, err = stmt.Exec(req.UserId, latestBuy.(Buy).StockSymbol, stockQuantity)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_BUY", StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, Username: req.UserId, ErrorMessage: "Error purchasing stock", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
-	auditEventU := UserCommand{Server:SERVER, Command:"COMMIT_BUY", Username:req.UserId, StockSymbol:latestBuy.(Buy).StockSymbol, Filename:FILENAME, Funds:latestBuy.(Buy).BuyAmount, TransactionNum:req.TransactionNum}
+	auditEventU := UserCommand{Server: SERVER, Command: "COMMIT_BUY", Username: req.UserId, StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
 	//	Return resp to client
@@ -386,16 +401,17 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 func sellHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId      string
-		StockSymbol string
-		Amount      int
+		UserId         string
+		StockSymbol    string
+		Amount         int
 		TransactionNum int
 	}{"", "", 0, 0}
 
 	err := decoder.Decode(&req)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -406,7 +422,8 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 	quoteString, err := getQuote(commandString, req.UserId)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error getting quote", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -427,21 +444,24 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error allocating stocks", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	res, err := stmt.Exec(thisSell.StockSellAmount, req.UserId, thisSell.StockSymbol)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error allocating stocks", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	numRows, err := res.RowsAffected()
 
 	if numRows < 1 {
-		failWithStatusCode(errors.New("Couldn't update portfolio"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error allocating stocks", TransactionNum: req.TransactionNum}
+		failWithStatusCode(errors.New("Couldn't update portfolio"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -452,7 +472,7 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 
 	sellMap[req.UserId].Push(thisSell)
 
-	auditEventU := UserCommand{Server:SERVER, Command:"SELL", Username:req.UserId, StockSymbol:thisSell.StockSymbol, Filename:FILENAME, Funds:thisSell.SellAmount, TransactionNum:req.TransactionNum}
+	auditEventU := UserCommand{Server: SERVER, Command: "SELL", Username: req.UserId, StockSymbol: thisSell.StockSymbol, Filename: FILENAME, Funds: thisSell.SellAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -462,46 +482,45 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 func cancelSellHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId string
+		UserId         string
 		TransactionNum int
 	}{"", 0}
 
 	err := decoder.Decode(&req)
 
-	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
-		return
-	}
-
-	if sellMap[req.UserId] == nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+	if err != nil || sellMap[req.UserId] == nil {
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SELL", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
 	latestSell := sellMap[req.UserId].Pop()
 
 	if latestSell == nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SELL", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
 	//	Return stocks to portfolio
-	queryString := "UPDATE stocks SET amount = amount + $1 WHERE user_name = $2"
+	queryString := "UPDATE stocks SET amount = amount + $1 WHERE user_name = $2 AND stock_symbol = $3"
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SELL", StockSymbol: latestSell.(Sell).StockSymbol, Filename: FILENAME, Funds: latestSell.(Sell).SellAmount, Username: req.UserId, ErrorMessage: "Could not return stocks", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
-	_, err = stmt.Exec(latestSell.(Sell).StockSellAmount, req.UserId)
+	_, err = stmt.Exec(latestSell.(Sell).StockSellAmount, req.UserId, latestSell.(Sell).StockSymbol)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SELL", StockSymbol: latestSell.(Sell).StockSymbol, Filename: FILENAME, Funds: latestSell.(Sell).SellAmount, Username: req.UserId, ErrorMessage: "Could not return stocks", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
-	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SELL", Username:req.UserId, StockSymbol:latestSell.(Sell).StockSymbol, Filename:FILENAME, Funds:latestSell.(Sell).SellAmount, TransactionNum:req.TransactionNum}
+	auditEventU := UserCommand{Server: SERVER, Command: "CANCEL_SELL", Username: req.UserId, StockSymbol: latestSell.(Sell).StockSymbol, Filename: FILENAME, Funds: latestSell.(Sell).SellAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -510,26 +529,23 @@ func cancelSellHandler(w http.ResponseWriter, r *http.Request) {
 func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId string
+		UserId         string
 		TransactionNum int
 	}{"", 0}
 
 	err := decoder.Decode(&req)
 
-	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
-		return
-	}
-
-	if sellMap[req.UserId] == nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+	if err != nil || sellMap[req.UserId] == nil {
+		auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_SELL", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
 	latestSell := sellMap[req.UserId].Pop()
 
 	if latestSell == nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_SELL", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -540,21 +556,23 @@ func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_SELL", StockSymbol: latestSell.(Sell).StockSymbol, Filename: FILENAME, Funds: latestSell.(Sell).SellAmount, Username: req.UserId, ErrorMessage: "Could not update funds", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	_, err = stmt.Exec(sellFunds, req.UserId)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_SELL", StockSymbol: latestSell.(Sell).StockSymbol, Filename: FILENAME, Funds: latestSell.(Sell).SellAmount, Username: req.UserId, ErrorMessage: "Could not update funds", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
-	auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:latestSell.(Sell).SellAmount, TransactionNum:req.TransactionNum}
+	auditEventA := AccountTransaction{Server: SERVER, Action: "add", Username: req.UserId, Funds: latestSell.(Sell).SellAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventA)
 
-	auditEventU := UserCommand{Server:SERVER, Command:"CONFIRM_SELL", Username:req.UserId, StockSymbol:latestSell.(Sell).StockSymbol, Filename:FILENAME, Funds:latestSell.(Sell).SellAmount, TransactionNum:req.TransactionNum}
+	auditEventU := UserCommand{Server: SERVER, Command: "CONFIRM_SELL", Username: req.UserId, StockSymbol: latestSell.(Sell).StockSymbol, Filename: FILENAME, Funds: latestSell.(Sell).SellAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -563,16 +581,17 @@ func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
 func setBuyHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId      string
-		StockSymbol string
-		Amount      int
+		UserId         string
+		StockSymbol    string
+		Amount         int
 		TransactionNum int
 	}{"", "", 0, 0}
 
 	err := decoder.Decode(&req)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -582,14 +601,16 @@ func setBuyHandler(w http.ResponseWriter, r *http.Request) {
 		stmt, err := db.Prepare(queryString)
 
 		if err != nil {
-			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Unable to update trigger", TransactionNum: req.TransactionNum}
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 			return
 		}
 
 		_, err = stmt.Exec(setBuyValue, req.UserId)
 
 		if err != nil {
-			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Unable to update trigger", TransactionNum: req.TransactionNum}
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 			return
 		}
 	}
@@ -603,28 +624,31 @@ func setBuyHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adjusting funds", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	res, err := stmt.Exec(req.Amount, req.UserId)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adjusting funds", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	numRows, err := res.RowsAffected()
 
 	if numRows < 1 {
-		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adjusting funds", TransactionNum: req.TransactionNum}
+		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	setBuy = true
 	setBuyValue = req.Amount
 
-	auditEventU := UserCommand{Server:SERVER, Command:"SET_BUY_AMOUNT", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:req.Amount, TransactionNum:req.TransactionNum}
+	auditEventU := UserCommand{Server: SERVER, Command: "SET_BUY_AMOUNT", Username: req.UserId, StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
 	//	Send response back to client
@@ -636,23 +660,23 @@ func cancelSetBuyHandler(w http.ResponseWriter, r *http.Request) {
 
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId      string
-		StockSymbol string
+		UserId         string
+		StockSymbol    string
 		TransactionNum int
 	}{"", "", 0}
 
 	err := decoder.Decode(&req)
 
 	if err != nil {
-		fmt.Println("yeet")
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SET_BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
 	if setBuy == false {
 		//cancelling when no trigger has been set
-		fmt.Println("cancel without set")
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SET_BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Bad Request, no trigger set", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -661,14 +685,16 @@ func cancelSetBuyHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SET_BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Unable to return funds", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	_, err = stmt.Exec(setBuyValue, req.UserId)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SET_BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Unable to return funds", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -679,7 +705,7 @@ func cancelSetBuyHandler(w http.ResponseWriter, r *http.Request) {
 	triggerBuy = false
 	triggerBuyValue = 0
 
-	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SET_BUY", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:0, TransactionNum:req.TransactionNum}
+	auditEventU := UserCommand{Server: SERVER, Command: "CANCEL_SET_BUY", Username: req.UserId, StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -688,21 +714,23 @@ func cancelSetBuyHandler(w http.ResponseWriter, r *http.Request) {
 func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId      string
-		StockSymbol string
-		Amount      int
+		UserId         string
+		StockSymbol    string
+		Amount         int
 		TransactionNum int
 	}{"", "", 0, 0}
 
 	err := decoder.Decode(&req)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
 	if setBuy == false {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -715,7 +743,8 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	quoteString, err := getQuote(commandString, req.UserId)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error getting quote", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -733,7 +762,7 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(thisBuy.StockPrice * 100)
 	fmt.Println(req.Amount)
 
-	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey, TransactionNum:req.TransactionNum}
+	auditEventQ := QuoteServer{Server: SERVER, Price: floatStringToCents(quoteStringComponents[0]), StockSymbol: thisBuy.StockSymbol, Username: req.UserId, QuoteServerTime: thisBuy.QuoteTimestamp, Cryptokey: thisBuy.QuoteCryptoKey, TransactionNum: req.TransactionNum}
 	audit(auditEventQ)
 
 	if int(thisBuy.StockPrice*100) <= req.Amount {
@@ -753,14 +782,16 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		stmt, err := db.Prepare(queryString)
 
 		if err != nil {
-			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: refundAmount, Username: req.UserId, ErrorMessage: "Error returning funds", TransactionNum: req.TransactionNum}
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 			return
 		}
 
 		_, err = stmt.Exec(refundAmount, req.UserId)
 
 		if err != nil {
-			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: refundAmount, Username: req.UserId, ErrorMessage: "Error returning funds", TransactionNum: req.TransactionNum}
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 			return
 		}
 
@@ -769,14 +800,16 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		stmt, err = db.Prepare(queryString)
 
 		if err != nil {
-			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: stockQuantity, Username: req.UserId, ErrorMessage: "Error allocating stocks", TransactionNum: req.TransactionNum}
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 			return
 		}
 
 		_, err = stmt.Exec(req.UserId, thisBuy.StockSymbol, stockQuantity)
 
 		if err != nil {
-			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: stockQuantity, Username: req.UserId, ErrorMessage: "Error allocating stocks", TransactionNum: req.TransactionNum}
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 			return
 		}
 
@@ -787,7 +820,7 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		triggerBuyValue = 0
 	}
 
-	auditEventU := UserCommand{Server:SERVER, Command:"SET_BUY_TRIGGER", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount, TransactionNum:req.TransactionNum}
+	auditEventU := UserCommand{Server: SERVER, Command: "SET_BUY_TRIGGER", Username: req.UserId, StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
 	//	Send response back to client
@@ -798,16 +831,17 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId      string
-		StockSymbol string
-		Amount      int
+		UserId         string
+		StockSymbol    string
+		Amount         int
 		TransactionNum int
 	}{"", "", 0, 0}
 
 	err := decoder.Decode(&req)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -817,14 +851,16 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 		stmt, err := db.Prepare(queryString)
 
 		if err != nil {
-			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error listing stocks", TransactionNum: req.TransactionNum}
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 			return
 		}
 
 		_, err = stmt.Exec(setSellValue, req.UserId, req.StockSymbol)
 
 		if err != nil {
-			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error listing stocks", TransactionNum: req.TransactionNum}
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 			return
 		}
 
@@ -840,7 +876,8 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	quoteString, err := getQuote(commandString, req.UserId)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error getting quote", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -856,7 +893,7 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	thisSell.SellAmount = req.Amount
 	thisSell.StockSellAmount = int(math.Ceil(float64(req.Amount) / (thisSell.StockPrice * 100)))
 
-	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisSell.StockSymbol, Username:req.UserId, QuoteServerTime:thisSell.QuoteTimestamp, Cryptokey:thisSell.QuoteCryptoKey, TransactionNum:req.TransactionNum}
+	auditEventQ := QuoteServer{Server: SERVER, Price: floatStringToCents(quoteStringComponents[0]), StockSymbol: thisSell.StockSymbol, Username: req.UserId, QuoteServerTime: thisSell.QuoteTimestamp, Cryptokey: thisSell.QuoteCryptoKey, TransactionNum: req.TransactionNum}
 	audit(auditEventQ)
 
 	fmt.Println(thisSell.StockPrice)
@@ -865,21 +902,24 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error listing stocks", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	res, err := stmt.Exec(thisSell.StockSellAmount, req.UserId, thisSell.StockSymbol)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error listing stocks", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	numRows, err := res.RowsAffected()
 
 	if numRows < 1 {
-		failWithStatusCode(errors.New("Couldn't update portfolio"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error listing stocks", TransactionNum: req.TransactionNum}
+		failWithStatusCode(errors.New("Couldn't update portfolio"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -887,7 +927,7 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	setSellValue = thisSell.StockSellAmount
 
 	//hit audit server
-	auditEventU := UserCommand{Server:SERVER, Command:"SET_SELL_AMMOUNT", Username:req.UserId, StockSymbol:thisSell.StockSymbol, Filename:FILENAME, Funds:thisSell.SellAmount, TransactionNum:req.TransactionNum}
+	auditEventU := UserCommand{Server: SERVER, Command: "SET_SELL_AMMOUNT", Username: req.UserId, StockSymbol: thisSell.StockSymbol, Filename: FILENAME, Funds: thisSell.SellAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -897,20 +937,22 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 func cancelSetSellHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId      string
-		StockSymbol string
+		UserId         string
+		StockSymbol    string
 		TransactionNum int
 	}{"", "", 0}
 
 	err := decoder.Decode(&req)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SET_SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
 	if setSell == false {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SET_SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -919,21 +961,23 @@ func cancelSetSellHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SET_SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: setSellValue, Username: req.UserId, ErrorMessage: "Error replacing stocks", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	_, err = stmt.Exec(setSellValue, req.UserId, req.StockSymbol)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SET_SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: setSellValue, Username: req.UserId, ErrorMessage: "Error replacing stocks", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	setSell = false
 	setSellValue = 0
 
-	auditEventU := UserCommand{Server:SERVER, Command:"CANCEL_SET_SELL", Username:req.UserId, StockSymbol:req.StockSymbol, Filename:FILENAME, Funds:0, TransactionNum:req.TransactionNum}
+	auditEventU := UserCommand{Server: SERVER, Command: "CANCEL_SET_SELL", Username: req.UserId, StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -942,21 +986,23 @@ func cancelSetSellHandler(w http.ResponseWriter, r *http.Request) {
 func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId      string
-		StockSymbol string
-		Amount      int
+		UserId         string
+		StockSymbol    string
+		Amount         int
 		TransactionNum int
 	}{"", "", 0, 0}
 
 	err := decoder.Decode(&req)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
 	if setSell == false {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 	triggerSell = true
@@ -967,7 +1013,8 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	quoteString, err := getQuote(commandString, req.UserId)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error getting quote", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -982,7 +1029,7 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.StockPrice, _ = strconv.ParseFloat(quoteStringComponents[0], 64)
 	thisBuy.BuyAmount = req.Amount
 
-	auditEventQ := QuoteServer{Server:SERVER, Price:floatStringToCents(quoteStringComponents[0]), StockSymbol:thisBuy.StockSymbol, Username:req.UserId, QuoteServerTime:thisBuy.QuoteTimestamp, Cryptokey:thisBuy.QuoteCryptoKey, TransactionNum:req.TransactionNum}
+	auditEventQ := QuoteServer{Server: SERVER, Price: floatStringToCents(quoteStringComponents[0]), StockSymbol: thisBuy.StockSymbol, Username: req.UserId, QuoteServerTime: thisBuy.QuoteTimestamp, Cryptokey: thisBuy.QuoteCryptoKey, TransactionNum: req.TransactionNum}
 	audit(auditEventQ)
 
 	fmt.Println(thisBuy.StockPrice * 100)
@@ -997,18 +1044,20 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		stmt, err := db.Prepare(queryString)
 
 		if err != nil {
-			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adding funds", TransactionNum: req.TransactionNum}
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 			return
 		}
 
 		_, err = stmt.Exec(sellFunds, req.UserId)
 
 		if err != nil {
-			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+			auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adding funds", TransactionNum: req.TransactionNum}
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 			return
 		}
 
-		auditEventA := AccountTransaction{Server:SERVER, Action:"add", Username:req.UserId, Funds:thisBuy.BuyAmount}
+		auditEventA := AccountTransaction{Server: SERVER, Action: "add", Username: req.UserId, Funds: thisBuy.BuyAmount}
 		audit(auditEventA)
 
 		//if trigger goes, turn it off
@@ -1018,7 +1067,7 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		setSellValue = 0
 	}
 
-	auditEventU := UserCommand{Server:SERVER, Command:"SET_SELL_TRIGGER", Username:req.UserId, StockSymbol:thisBuy.StockSymbol, Filename:FILENAME, Funds:thisBuy.BuyAmount, TransactionNum:req.TransactionNum}
+	auditEventU := UserCommand{Server: SERVER, Command: "SET_SELL_TRIGGER", Username: req.UserId, StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
 	w.WriteHeader(http.StatusOK)
@@ -1027,14 +1076,15 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId string
+		UserId         string
 		TransactionNum int
 	}{"", 0}
 
 	err := decoder.Decode(&req)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "DISPLAY_SUMMARY", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -1044,7 +1094,8 @@ func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError)
+		auditError := ErrorEvent{Server: SERVER, Command: "DISPLAY_SUMMARY", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Error fetching account information", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -1052,11 +1103,12 @@ func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
 	err = stmt.QueryRow(req.UserId).Scan(&userFunds)
 
 	if err != nil {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "DISPLAY_SUMMARY", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Error fetching account information", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
-	auditEvent := UserCommand{Server:SERVER, Command:"DISPLAY_SUMMARY", Username:req.UserId, StockSymbol:"", Filename:FILENAME, Funds:userFunds, TransactionNum:req.TransactionNum}
+	auditEvent := UserCommand{Server: SERVER, Command: "DISPLAY_SUMMARY", Username: req.UserId, StockSymbol: "", Filename: FILENAME, Funds: userFunds, TransactionNum: req.TransactionNum}
 
 	audit(auditEvent)
 
@@ -1067,14 +1119,16 @@ func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
 func dumpLogHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	req := struct {
-		UserId   string
-		FileName string
-	}{"", ""}
+		UserId         string
+		FileName       string
+		TransactionNum int
+	}{"", "", 0}
 
 	err := decoder.Decode(&req)
 
 	if err != nil || req.FileName == "" {
-		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest)
+		auditError := ErrorEvent{Server: SERVER, Command: "DUMPLOG", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Error fetching account information", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 
@@ -1132,6 +1186,6 @@ func main() {
 	http.HandleFunc("/cancelSetSell", cancelSetSellHandler)
 	http.HandleFunc("/setSellTrigger", setSellTriggerHandler)
 	http.HandleFunc("/displaySummary", displaySummaryHandler)
-	http.HandleFunc("/dumpLog", dumpLogHandler)	
+	http.HandleFunc("/dumpLog", dumpLogHandler)
 	http.ListenAndServe(port, nil)
 }
