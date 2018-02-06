@@ -45,7 +45,7 @@ type Quote struct {
 	CryptoKey   string
 }
 
-func getQuote(stockSymbol string, userId string) (Quote, error) {
+func getQuote(stockSymbol string, userId string, transactionNum int) (Quote, error) {
 	quoteTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
 
 	commandString := stockSymbol + "," + userId
@@ -81,6 +81,9 @@ func getQuote(stockSymbol string, userId string) (Quote, error) {
 
 	quoteMap[stockSymbol] = thisQuote
 
+	auditEvent := QuoteServer{Server: SERVER, Price: floatStringToCents(thisQuote.Price), StockSymbol: thisQuote.StockSymbol, Username: thisQuote.UserId, QuoteServerTime: thisQuote.Timestamp, Cryptokey: thisQuote.CryptoKey, TransactionNum: transactionNum}
+	audit(auditEvent)
+
 	return thisQuote, nil
 }
 
@@ -105,7 +108,7 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newQuote, err := getQuote(req.StockSymbol, req.UserId)
+	newQuote, err := getQuote(req.StockSymbol, req.UserId, req.TransactionNum)
 
 	if err != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "QUOTE", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Error receiving quote", TransactionNum: req.TransactionNum}
@@ -119,9 +122,6 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
-
-	auditEvent := QuoteServer{Server: SERVER, Price: floatStringToCents(newQuote.Price), StockSymbol: newQuote.StockSymbol, Username: newQuote.UserId, QuoteServerTime: newQuote.Timestamp, Cryptokey: newQuote.CryptoKey, TransactionNum: req.TransactionNum}
-	audit(auditEvent)
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, string(quoteJson))
@@ -223,7 +223,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	audit(auditEventA)
 
 	//	Get a quote
-	newQuote, err := getQuote(req.StockSymbol, req.UserId)
+	newQuote, err := getQuote(req.StockSymbol, req.UserId, req.TransactionNum)
 
 	if err != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error getting quote", TransactionNum: req.TransactionNum}
@@ -240,9 +240,6 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.StockSymbol = newQuote.StockSymbol
 	thisBuy.StockPrice, _ = strconv.ParseFloat(newQuote.Price, 64)
 	thisBuy.BuyAmount = req.Amount
-
-	auditEventQ := QuoteServer{Server: SERVER, Price: thisBuy.BuyAmount, StockSymbol: thisBuy.StockSymbol, Username: req.UserId, QuoteServerTime: thisBuy.QuoteTimestamp, Cryptokey: thisBuy.QuoteCryptoKey, TransactionNum: req.TransactionNum}
-	audit(auditEventQ)
 
 	//	Add buy to stack of pending buys
 	if buyMap[req.UserId] == nil {
@@ -403,7 +400,7 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 	sellTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
 
 	//	Get a quote
-	newQuote, err := getQuote(req.StockSymbol, req.UserId)
+	newQuote, err := getQuote(req.StockSymbol, req.UserId, req.TransactionNum)
 
 	if err != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error getting quote", TransactionNum: req.TransactionNum}
@@ -720,7 +717,7 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	//hit audit server
 
 	//	Get a quote
-	newQuote, err := getQuote(req.StockSymbol, req.UserId)
+	newQuote, err := getQuote(req.StockSymbol, req.UserId, req.TransactionNum)
 
 	if err != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error getting quote", TransactionNum: req.TransactionNum}
@@ -740,9 +737,6 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println(thisBuy.StockPrice * 100)
 	fmt.Println(req.Amount)
-
-	auditEventQ := QuoteServer{Server: SERVER, Price: floatStringToCents(newQuote.StockSymbol), StockSymbol: thisBuy.StockSymbol, Username: req.UserId, QuoteServerTime: thisBuy.QuoteTimestamp, Cryptokey: thisBuy.QuoteCryptoKey, TransactionNum: req.TransactionNum}
-	audit(auditEventQ)
 
 	if int(thisBuy.StockPrice*100) <= req.Amount {
 
@@ -851,7 +845,7 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	sellTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
 
 	//	Get a quote
-	newQuote, err := getQuote(req.StockSymbol, req.UserId)
+	newQuote, err := getQuote(req.StockSymbol, req.UserId, req.TransactionNum)
 
 	if err != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error getting quote", TransactionNum: req.TransactionNum}
@@ -869,9 +863,6 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	thisSell.StockPrice, _ = strconv.ParseFloat(newQuote.Price, 64)
 	thisSell.SellAmount = req.Amount
 	thisSell.StockSellAmount = int(math.Ceil(float64(req.Amount) / (thisSell.StockPrice * 100)))
-
-	auditEventQ := QuoteServer{Server: SERVER, Price: floatStringToCents(newQuote.Price), StockSymbol: thisSell.StockSymbol, Username: req.UserId, QuoteServerTime: thisSell.QuoteTimestamp, Cryptokey: thisSell.QuoteCryptoKey, TransactionNum: req.TransactionNum}
-	audit(auditEventQ)
 
 	fmt.Println(thisSell.StockPrice)
 	//	Check if they have enough stock to sell at this price
@@ -986,7 +977,7 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	triggerSellValue = req.Amount
 
 	//	Get a quote
-	newQuote, err := getQuote(req.StockSymbol, req.UserId)
+	newQuote, err := getQuote(req.StockSymbol, req.UserId, req.TransactionNum)
 
 	if err != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error getting quote", TransactionNum: req.TransactionNum}
@@ -1003,9 +994,6 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.StockSymbol = newQuote.StockSymbol
 	thisBuy.StockPrice, _ = strconv.ParseFloat(newQuote.Price, 64)
 	thisBuy.BuyAmount = req.Amount
-
-	auditEventQ := QuoteServer{Server: SERVER, Price: floatStringToCents(newQuote.Price), StockSymbol: thisBuy.StockSymbol, Username: req.UserId, QuoteServerTime: thisBuy.QuoteTimestamp, Cryptokey: thisBuy.QuoteCryptoKey, TransactionNum: req.TransactionNum}
-	audit(auditEventQ)
 
 	fmt.Println(thisBuy.StockPrice * 100)
 	fmt.Println(req.Amount)
