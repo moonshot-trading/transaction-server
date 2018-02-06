@@ -52,6 +52,8 @@ func getQuote(stockSymbol string, userId string, transactionNum int) (Quote, err
 
 	if cachedQuote, exists := quoteMap[stockSymbol]; exists {
 		if cachedQuote.Timestamp+60000 > quoteTime {
+			auditCacheEvent := SystemEvent{Server: SERVER, Command: "QUOTE", StockSymbol: stockSymbol, Username: userId, Filename: FILENAME, Funds: floatStringToCents(cachedQuote.Price), TransactionNum: transactionNum}
+			audit(auditCacheEvent)
 			return cachedQuote, nil
 		}
 	}
