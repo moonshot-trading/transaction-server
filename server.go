@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"net"
@@ -124,7 +125,6 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, string(quoteJson))
 }
@@ -1117,8 +1117,25 @@ func dumpLogHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func loadDB() *sql.DB {
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "localhost", 5432, "moonshot", "hodl", "moonshot")
-	db, err := sql.Open("postgres", psqlInfo)
+
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "postgres", 5432, "moonshot", "hodl", "moonshot")
+
+	var db *sql.DB
+	var err error
+	db, err = sql.Open("postgres", psqlInfo)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for i := 0; i < 5; i++ {
+		time.Sleep(time.Duration(i) * time.Second)
+
+		if err = db.Ping(); err == nil {
+			break
+		}
+		log.Println(err)
+	}
+
 	if err != nil {
 		failGracefully(err, "Failed to open Postgres")
 	}

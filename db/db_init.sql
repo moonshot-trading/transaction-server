@@ -1,3 +1,8 @@
+CREATE USER moonshot WITH PASSWORD 'hodl';
+	CREATE DATABASE moonshot;
+	GRANT ALL PRIVILEGES ON DATABASE moonshot TO moonshot;
+
+\connect moonshot
 CREATE TYPE command AS ENUM(
   'ADD',
   'QUOTE',
