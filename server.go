@@ -1055,7 +1055,7 @@ func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
 
 func loadDB() *sql.DB {
 
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "localhost", 5432, "moonshot", "hodl", "moonshot")
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "postgres", 5432, "moonshot", "hodl", "moonshot")
 
 	var db *sql.DB
 	var err error
