@@ -844,32 +844,37 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, exists := sellTriggerMap[req.UserId+","+req.StockSymbol]; exists {
-		//	Get a quote
-		newQuote, err := getQuote(req.StockSymbol, req.UserId, req.TransactionNum)
+	if existingSellTrigger, exists := sellTriggerMap[req.UserId+","+req.StockSymbol]; exists {
+		//	REMOVE THE MAXIMUM NUMBER OF STOCKS THAT COULD BE NEEDED TO FILL THIS SELL ORDER
+		existingSellTrigger.StockSellAmount = int(math.Ceil(float64(existingSellTrigger.SellAmount) / float64(req.Amount)))
+
+		//	Check if they have enough stock to sell at this price
+		queryString := "UPDATE stocks SET amount = stocks.amount - $1 WHERE user_name = $2 AND stock_symbol = $3"
+		stmt, err := db.Prepare(queryString)
 
 		if err != nil {
-			auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error getting quote", TransactionNum: req.TransactionNum}
+			auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error allocating stocks", TransactionNum: req.TransactionNum}
 			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 			return
 		}
 
-		// Parse Quote
-		thisBuy := Buy{}
+		res, err := stmt.Exec(existingSellTrigger.StockSellAmount, req.UserId, existingSellTrigger.StockSymbol)
 
-		//thisBuy.BuyTimestamp = buyTime
-		thisBuy.QuoteTimestamp = newQuote.Timestamp
-		thisBuy.QuoteCryptoKey = newQuote.CryptoKey
-		thisBuy.StockSymbol = newQuote.StockSymbol
-		thisBuy.StockPrice, _ = strconv.ParseFloat(newQuote.Price, 64)
-		thisBuy.BuyAmount = req.Amount
+		if err != nil {
+			auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error allocating stocks", TransactionNum: req.TransactionNum}
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+			return
+		}
 
-		fmt.Println(thisBuy.StockPrice * 100)
-		fmt.Println(req.Amount)
+		numRows, err := res.RowsAffected()
 
-		//	REMOVE THE MAXIMUM NUMBER OF STOCKS THAT COULD BE NEEDED TO FILL THIS SELL ORDER
+		if numRows < 1 {
+			auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error allocating stocks", TransactionNum: req.TransactionNum}
+			failWithStatusCode(errors.New("Couldn't update portfolio"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+			return
+		}
 
-		auditEventU := UserCommand{Server: SERVER, Command: "SET_SELL_TRIGGER", Username: req.UserId, StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, TransactionNum: req.TransactionNum}
+		auditEventU := UserCommand{Server: SERVER, Command: "SET_SELL_TRIGGER", Username: req.UserId, StockSymbol: existingSellTrigger.StockSymbol, Filename: FILENAME, Funds: existingSellTrigger.SellAmount, TransactionNum: req.TransactionNum}
 		audit(auditEventU)
 
 		w.WriteHeader(http.StatusOK)
