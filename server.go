@@ -35,7 +35,7 @@ var (
 	triggerSell      = false
 	triggerSellValue = 0
 	SERVER           = "1"
-	FILENAME         = "1userWorkLoad"
+	FILENAME         = "10userWorkLoad"
 )
 
 type Quote struct {
@@ -1087,7 +1087,8 @@ func dumpLogHandler(w http.ResponseWriter, r *http.Request) {
 		UserId         string
 		FileName       string
 		TransactionNum int
-	}{"", "", 0}
+		Server         string
+	}{"", FILENAME, 0, SERVER}
 
 	err := decoder.Decode(&req)
 
