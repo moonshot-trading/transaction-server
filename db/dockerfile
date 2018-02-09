@@ -5,4 +5,3 @@ RUN ls /docker-entrypoint-initdb.d/
 
 ENV POSTGRES_USER moonshot
 ENV POSTGRES_PASSWORD hodl
-ENV POSTGRES_DB moonshot

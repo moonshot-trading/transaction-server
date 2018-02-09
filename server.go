@@ -1006,7 +1006,7 @@ func addBuyTimer(u string, s string) {
 		buyTriggerTickerMap[s] = ticker
 
 		go func() {
-			for range ticker.C {
+			for range buyTriggerTickerMap[s].C {
 				aggBuy <- s
 			}
 		}()
@@ -1037,7 +1037,10 @@ func removeBuyTimer(u string, s string) {
 		}
 	}
 	buyTriggerStockMap[s] = na
+	fmt.Println("stopotpotptoptop", na, s, u)
+
 	if len(buyTriggerStockMap[s]) == 0 {
+		fmt.Println("stopotpotptoptop")
 		buyTriggerTickerMap[s].Stop()
 		delete(buyTriggerTickerMap, s)
 	}
@@ -1149,7 +1152,7 @@ func monitorBuyTriggers() {
 				thisBuy.StockSymbol = newQuote.StockSymbol
 				thisBuy.StockPrice, _ = strconv.ParseFloat(newQuote.Price, 64)
 				thisBuy.BuyAmount = buyTriggerMap[UserId+","+stockSymbol].BuyPrice
-
+				fmt.Println(thisBuy.StockSymbol, this.BuyAmount)
 				if int(thisBuy.StockPrice*100) <= thisBuy.BuyAmount {
 
 					//we check the current value to see if the trigger goes right away
@@ -1169,6 +1172,7 @@ func monitorBuyTriggers() {
 					if err != nil {
 						//auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: stockSymbol, Filename: FILENAME, Funds: refundAmount, Username: UserId, ErrorMessage: "Error returning funds", TransactionNum: 8011}
 						//failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+						fmt.Println("er -1")
 						return
 					}
 
@@ -1177,6 +1181,7 @@ func monitorBuyTriggers() {
 					if err != nil {
 						//auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: stockSymbol, Filename: FILENAME, Funds: refundAmount, Username: UserId, ErrorMessage: "Error returning funds", TransactionNum: 8011}
 						//failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+						fmt.Println("er 0")
 						return
 					}
 
@@ -1187,6 +1192,7 @@ func monitorBuyTriggers() {
 					if err != nil {
 						//auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: stockSymbol, Filename: FILENAME, Funds: stockQuantity, Username: UserId, ErrorMessage: "Error allocating stocks", TransactionNum: 8011}
 						//failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+						fmt.Println("er 1")
 						return
 					}
 
@@ -1195,10 +1201,12 @@ func monitorBuyTriggers() {
 					if err != nil {
 						//auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: stockSymbol, Filename: FILENAME, Funds: stockQuantity, Username: UserId, ErrorMessage: "Error allocating stocks", TransactionNum: 8011}
 						//failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+						fmt.Println("er 2")
 						return
 					}
 
 					//I assume the trigger goes away if you fufill it
+					fmt.Println("ahaha")
 					removeBuyTimer(stockSymbol, UserId)
 				}
 			}

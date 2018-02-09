@@ -11,7 +11,7 @@ BEGIN
 END
 $body$;
 
-CREATE DATABASE "moonshot";
+--CREATE DATABASE "moonshot";
 GRANT ALL PRIVILEGES ON DATABASE "moonshot" TO moonshot;
 
 \connect moonshot
