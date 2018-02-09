@@ -1267,6 +1267,10 @@ func main() {
 	monitorBuyTriggers()
 
 	rand.Seed(time.Now().Unix())
+
+	go clearSells()
+	go clearBuys()
+
 	port := ":44416"
 	fmt.Printf("Listening on port %s\n", port)
 	http.HandleFunc("/", rootHandler)
