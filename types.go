@@ -34,6 +34,12 @@ type SellTrigger struct {
 	StockSellAmount  int
 }
 
+type transactionConfig struct {
+	quoteServer string
+	auditServer string
+	db          string
+}
+
 //	Auditing types
 type AccountTransaction struct {
 	Server         string `json:"server"`

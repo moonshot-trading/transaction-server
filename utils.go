@@ -8,7 +8,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"os"
 )
+
+func runningInDocker() bool {
+	_, err := os.Stat("/.dockerenv")
+	if err == nil {
+		return true
+	}
+	return false
+}
 
 func failOnError(err error, msg string) {
 	if err != nil {
@@ -32,7 +41,7 @@ func failGracefully(err error, msg string) {
 
 func sendToAuditServer(auditStruct interface{}, path string) {
 	jsonValue, _ := json.Marshal(auditStruct)
-	resp, err := http.Post("http://audit-server:44417/"+path, "application/json", bytes.NewBuffer(jsonValue))
+	resp, err := http.Post("http://"+config.auditServer+":44417/"+path, "application/json", bytes.NewBuffer(jsonValue))
 
 	if err != nil {
 		fmt.Printf("***FAILED TO AUDIT: %s", err)
