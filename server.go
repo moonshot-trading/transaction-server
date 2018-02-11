@@ -971,7 +971,7 @@ func dumpLogHandler(w http.ResponseWriter, r *http.Request) {
 		FileName       string
 		TransactionNum int
 		Server         string
-	}{"", FILENAME, 0, SERVER}
+	}{"", FILENAME, 1, SERVER}
 
 	err := decoder.Decode(&req)
 
