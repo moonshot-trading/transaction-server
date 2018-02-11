@@ -1,8 +1,20 @@
-CREATE USER moonshot WITH PASSWORD 'hodl';
-	CREATE DATABASE moonshot;
-	GRANT ALL PRIVILEGES ON DATABASE moonshot TO moonshot;
+DO
+$body$
+BEGIN
+  IF NOT EXISTS (
+      SELECT                       -- SELECT list can stay empty for this
+      FROM   pg_catalog.pg_user
+      WHERE  usename = 'moonshot') THEN
+
+    CREATE ROLE moonshot LOGIN PASSWORD 'hodl';
+  END IF;
+END
+$body$;
+
+GRANT ALL PRIVILEGES ON DATABASE "moonshot" TO moonshot;
 
 \connect moonshot
+
 CREATE TYPE command AS ENUM(
   'ADD',
   'QUOTE',
