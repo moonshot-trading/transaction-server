@@ -32,7 +32,7 @@ func failGracefully(err error, msg string) {
 
 func sendToAuditServer(auditStruct interface{}, path string) {
 	jsonValue, _ := json.Marshal(auditStruct)
-	resp, err := http.Post("http://localhost:44417/"+path, "application/json", bytes.NewBuffer(jsonValue))
+	resp, err := http.Post("http://audit-server:44417/"+path, "application/json", bytes.NewBuffer(jsonValue))
 
 	if err != nil {
 		fmt.Printf("***FAILED TO AUDIT: %s", err)
