@@ -18,7 +18,13 @@ import (
 
 //	Globals
 var (
-	quoteServerURL       = "quote-server"
+	config =  func() transactionConfig {
+		if runningInDocker() {
+			return transactionConfig{"quote-server", "audit-server", "postgres"}
+		} else {
+			return transactionConfig{"localhost", "localhost", "localhost"}
+		}
+	}()
 	quoteServerPort      = "44418"
 	db                   = loadDB()
 	buyMap               = make(map[string]*Stack)
@@ -58,7 +64,7 @@ func getQuote(stockSymbol string, userId string, transactionNum int) (Quote, err
 	q.UserId = userId
 	q.StockSymbol = stockSymbol
 	jsonValue, _ := json.Marshal(q)
-	resp, err := http.Post("http://"+quoteServerURL+":"+quoteServerPort+"/quote", "application/json", bytes.NewBuffer(jsonValue))
+	resp, err := http.Post("http://"+config.quoteServer+":"+quoteServerPort+"/quote", "application/json", bytes.NewBuffer(jsonValue))
 	failOnError(err, "Error sending request")
 	defer resp.Body.Close()
 
@@ -970,7 +976,8 @@ func dumpLogHandler(w http.ResponseWriter, r *http.Request) {
 		UserId         string
 		FileName       string
 		TransactionNum int
-	}{"", "", 0}
+		Server         string
+	}{"", FILENAME, 1, SERVER}
 
 	err := decoder.Decode(&req)
 
@@ -983,7 +990,7 @@ func dumpLogHandler(w http.ResponseWriter, r *http.Request) {
 	if req.UserId == "" {
 		fmt.Println("Dumplog of everything")
 		jsonValue, _ := json.Marshal(req)
-		resp, err := http.Post("http://audit-server:44417/dumpLog", "application/json", bytes.NewBuffer(jsonValue))
+		resp, err := http.Post("http://"+config.auditServer+":44417/dumpLog", "application/json", bytes.NewBuffer(jsonValue))
 		failOnError(err, "Error sending request")
 		defer resp.Body.Close()
 		w.WriteHeader(http.StatusOK)
@@ -992,7 +999,7 @@ func dumpLogHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Dumplog of only this users transactions")
 	jsonValue, _ := json.Marshal(req)
-	resp, err := http.Post("http://audit-server:44417/dumpLog", "application/json", bytes.NewBuffer(jsonValue))
+	resp, err := http.Post("http://"+config.auditServer+":44417/dumpLog", "application/json", bytes.NewBuffer(jsonValue))
 	failOnError(err, "Error sending request")
 	defer resp.Body.Close()
 
@@ -1100,7 +1107,7 @@ func removeSellTimer(s string, u string) {
 
 func loadDB() *sql.DB {
 
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "postgres", 5432, "moonshot", "hodl", "moonshot")
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", config.db, 5432, "moonshot", "hodl", "moonshot")
 
 	var db *sql.DB
 	var err error
@@ -1119,13 +1126,13 @@ func loadDB() *sql.DB {
 	}
 
 	if err != nil {
-		failGracefully(err, "Failed to open Postgres")
+		failGracefully(err, "Failed to open Postgres at " + config.db)
 	}
 	err = db.Ping()
 	if err != nil {
-		failGracefully(err, "Failed to Ping Postgres")
+		failGracefully(err, "Failed to Ping Postgres at " + config.db)
 	} else {
-		fmt.Println("Connected to DB")
+		fmt.Println("Connected to DB at " + config.db)
 	}
 	return db
 }
