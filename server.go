@@ -13,6 +13,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/streadway/amqp"
 )
 
 //	Globals
@@ -38,6 +39,11 @@ var (
 	aggSell              = make(chan string)
 	SERVER               = "1"
 	FILENAME             = "10userWorkLoad"
+	rmqConn              *amqp.Connection
+	transactionChannel   = make(chan interface{})
+	errorChannel         = make(chan interface{})
+	userChannel          = make(chan interface{})
+	quoteChannel         = make(chan interface{})
 )
 
 type Quote struct {
@@ -1332,12 +1338,39 @@ func monitorSellTriggers() {
 	}()
 }
 
+func initRMQ() {
+
+	var err error
+
+	for i := 0; i < 5; i++ {
+		time.Sleep(time.Duration(i) * time.Second)
+
+		rmqConn, err = amqp.Dial("amqp://guest:guest@audit-mq:5672/")
+		if err == nil {
+			break
+		}
+		log.Println(err)
+	}
+
+	if err != nil {
+		failOnError(err, "Failed to rmqConnect to RabbitMQ")
+	}
+}
+
 func main() {
 
 	monitorSellTriggers()
 	monitorBuyTriggers()
 
 	rand.Seed(time.Now().Unix())
+
+	initRMQ()
+	defer rmqConn.Close()
+
+	go ErrorAuditer(errorChannel)
+	go UserAuditer(userChannel)
+	go TransactionAuditer(transactionChannel)
+	go QuoteAuditer(quoteChannel)
 
 	go clearSells()
 	go clearBuys()

@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
-	"os"
 )
 
 func runningInDocker() bool {
@@ -39,41 +37,43 @@ func failGracefully(err error, msg string) {
 	}
 }
 
-func sendToAuditServer(auditStruct interface{}, path string) {
-	jsonValue, _ := json.Marshal(auditStruct)
-	resp, err := http.Post("http://"+config.auditServer+":44417/"+path, "application/json", bytes.NewBuffer(jsonValue))
+func sendToAuditServer(auditStruct interface{}) {
 
-	if err != nil {
-		fmt.Printf("***FAILED TO AUDIT: %s", err)
-	}
+	// if auditStruct.Path
+	// auditChannel <- auditStruct
 
-	defer resp.Body.Close()
+	// jsonValue, _ := json.Marshal(auditStruct)
+	// resp, err := http.Post("http://"+config.auditServer+":44417/"+auditStruct.Path, "application/json", bytes.NewBuffer(jsonValue))
+
+	// if err != nil {
+	// 	fmt.Printf("***FAILED TO AUDIT: %s", err)
+	// }
+
+	// defer resp.Body.Close()
 }
 
 func audit(auditStruct interface{}) {
-	var path string
-	//  Check the type of auditStruct
+	// var path string
+	// //  Check the type of auditStruct
 	switch auditStruct.(type) {
 	case AccountTransaction:
-		path = "accountTransaction"
+		transactionChannel <- auditStruct
 
-	case SystemEvent:
-		path = "systemEvent"
+	// case SystemEvent:
+	// 	path = "systemEvent"
 
 	case ErrorEvent:
-		path = "errorEvent"
+		errorChannel <- auditStruct
 
-	case DebugEvent:
-		path = "debugEvent"
+	// case DebugEvent:
+	// 	path = "debugEvent"
 
 	case QuoteServer:
-		path = "quoteServer"
+		quoteChannel <- auditStruct
 
 	case UserCommand:
-		path = "userCommand"
+		userChannel <- auditStruct
 	}
-
-	sendToAuditServer(auditStruct, path)
 }
 
 func clearBuys() {
