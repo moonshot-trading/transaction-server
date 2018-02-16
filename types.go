@@ -5,7 +5,7 @@ type Buy struct {
 	QuoteTimestamp int64
 	QuoteCryptoKey string
 	StockSymbol    string
-	StockPrice     float64
+	StockPrice     int
 	BuyAmount      int
 }
 
@@ -14,7 +14,7 @@ type Sell struct {
 	QuoteTimestamp  int64
 	QuoteCryptoKey  string
 	StockSymbol     string
-	StockPrice      float64
+	StockPrice      int
 	SellAmount      int
 	StockSellAmount int
 }

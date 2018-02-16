@@ -10,7 +10,6 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
-	"strconv"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -42,7 +41,7 @@ var (
 )
 
 type Quote struct {
-	Price       string
+	Price       int
 	StockSymbol string
 	UserId      string
 	Timestamp   int64
@@ -75,19 +74,19 @@ func getQuote(stockSymbol string, userId string, transactionNum int) (Quote, err
 
 	decoder := json.NewDecoder(resp.Body)
 	req := struct {
-		Price       float64
+		Price       string
 		StockSymbol string
 		UserId      string
 		Timestamp   int64
 		CryptoKey   string
 		Cached      bool
-	}{0, "", "", 0, "", false}
+	}{"", "", "", 0, "", false}
 
 	err = decoder.Decode(&req)
 
 	if !req.Cached {
 		//only audit uncached events
-		auditEvent := QuoteServer{Server: SERVER, Price: int(req.Price * 10), StockSymbol: req.StockSymbol, Username: req.UserId, QuoteServerTime: req.Timestamp, Cryptokey: req.CryptoKey, TransactionNum: transactionNum}
+		auditEvent := QuoteServer{Server: SERVER, Price: floatStringToCents(req.Price), StockSymbol: req.StockSymbol, Username: req.UserId, QuoteServerTime: req.Timestamp, Cryptokey: req.CryptoKey, TransactionNum: transactionNum}
 		audit(auditEvent)
 	}
 
@@ -100,7 +99,7 @@ func getQuote(stockSymbol string, userId string, transactionNum int) (Quote, err
 
 	thisQuote := Quote{}
 
-	thisQuote.Price = strconv.FormatFloat(req.Price, 'E', -1, 64)
+	thisQuote.Price = floatStringToCents(req.Price)
 	thisQuote.StockSymbol = req.StockSymbol
 	thisQuote.UserId = req.UserId
 	thisQuote.Timestamp = req.Timestamp
@@ -242,7 +241,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 
 	if numRows < 1 {
 		auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Could not reserve funds for BUY", TransactionNum: req.TransactionNum}
-		failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+		failWithStatusCode(errors.New("Couldn't update account buy"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -266,7 +265,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.QuoteTimestamp = newQuote.Timestamp
 	thisBuy.QuoteCryptoKey = newQuote.CryptoKey
 	thisBuy.StockSymbol = newQuote.StockSymbol
-	thisBuy.StockPrice, _ = strconv.ParseFloat(newQuote.Price, 64)
+	thisBuy.StockPrice = newQuote.Price
 	thisBuy.BuyAmount = req.Amount
 
 	//	Add buy to stack of pending buys
@@ -456,9 +455,15 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 	thisSell.QuoteTimestamp = newQuote.Timestamp
 	thisSell.QuoteCryptoKey = newQuote.CryptoKey
 	thisSell.StockSymbol = newQuote.StockSymbol
-	thisSell.StockPrice, _ = strconv.ParseFloat(newQuote.Price, 64)
+	thisSell.StockPrice = newQuote.Price
 	thisSell.SellAmount = req.Amount
-	thisSell.StockSellAmount = int(math.Ceil(float64(req.Amount) / (thisSell.StockPrice * 100)))
+	thisSell.StockSellAmount = int(math.Ceil(float64(req.Amount) / float64(thisSell.StockPrice)))
+
+	if thisSell.StockSellAmount < 1 {
+		auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "No stocks to sell", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+		return
+	}
 
 	//	Check if they have enough stock to sell at this price
 	queryString := "UPDATE stocks SET amount = stocks.amount - $1 WHERE user_name = $2 AND stock_symbol = $3"
@@ -482,7 +487,7 @@ func sellHandler(w http.ResponseWriter, r *http.Request) {
 
 	if numRows < 1 {
 		auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error allocating stocks", TransactionNum: req.TransactionNum}
-		failWithStatusCode(errors.New("Couldn't update portfolio"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+		failWithStatusCode(errors.New("Couldn't update portfolio sell"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -909,6 +914,12 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		//	REMOVE THE MAXIMUM NUMBER OF STOCKS THAT COULD BE NEEDED TO FILL THIS SELL ORDER
 		existingSellTrigger.StockSellAmount = int(math.Ceil(float64(existingSellTrigger.SellAmount) / float64(req.Amount)))
 
+		if existingSellTrigger.StockSellAmount < 0 {
+			auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Not enough stocks to sell", TransactionNum: req.TransactionNum}
+			failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+			return
+		}
+
 		//	Check if they have enough stock to sell at this price
 		queryString := "UPDATE stocks SET amount = stocks.amount - $1 WHERE user_name = $2 AND stock_symbol = $3"
 		stmt, err := db.Prepare(queryString)
@@ -931,7 +942,7 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 
 		if numRows < 1 {
 			auditError := ErrorEvent{Server: SERVER, Command: "SELL", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error allocating stocks", TransactionNum: req.TransactionNum}
-			failWithStatusCode(errors.New("Couldn't update portfolio"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+			failWithStatusCode(errors.New("Couldn't update portfolio sell trig"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 			return
 		}
 
@@ -1188,7 +1199,7 @@ func monitorBuyTriggers() {
 					thisBuy.QuoteTimestamp = newQuote.Timestamp
 					thisBuy.QuoteCryptoKey = newQuote.CryptoKey
 					thisBuy.StockSymbol = newQuote.StockSymbol
-					thisBuy.StockPrice, _ = strconv.ParseFloat(newQuote.Price, 64)
+					thisBuy.StockPrice = newQuote.Price
 					thisBuy.BuyAmount = buyTriggerMap[UserId+","+stockSymbol].BuyPrice
 					//fmt.Println(thisBuy.StockSymbol, thisBuy.BuyAmount)
 					if int(thisBuy.StockPrice*100) <= thisBuy.BuyAmount {
@@ -1282,7 +1293,7 @@ func monitorSellTriggers() {
 					thisSell.QuoteTimestamp = newQuote.Timestamp
 					thisSell.QuoteCryptoKey = newQuote.CryptoKey
 					thisSell.StockSymbol = newQuote.StockSymbol
-					thisSell.StockPrice, _ = strconv.ParseFloat(newQuote.Price, 64)
+					thisSell.StockPrice = newQuote.Price
 					thisSell.SellAmount = sellTriggerMap[UserId+","+stockSymbol].SellPrice
 
 					if int(thisSell.StockPrice*100) >= thisSell.SellAmount {
