@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/streadway/amqp"
 )
@@ -30,9 +31,11 @@ func ErrorAuditer(audits <-chan interface{}) {
 
 	for auditStruct := range audits {
 
-		body, _ := json.Marshal(auditStruct)
+		body, merr := json.Marshal(auditStruct)
 
-		//dump that shit into rabbitmq
+		if merr != nil {
+			fmt.Println("marshal error")
+		}
 
 		err = rmqChannel.Publish(
 			"",     // exchange
@@ -70,9 +73,12 @@ func TransactionAuditer(audits <-chan interface{}) {
 
 	for auditStruct := range audits {
 
-		body, _ := json.Marshal(auditStruct)
+		body, merr := json.Marshal(auditStruct)
 
 		//dump that shit into rabbitmq
+		if merr != nil {
+			fmt.Println("marshal error")
+		}
 
 		err = rmqChannel.Publish(
 			"",     // exchange
@@ -110,9 +116,12 @@ func UserAuditer(audits <-chan interface{}) {
 
 	for auditStruct := range audits {
 
-		body, _ := json.Marshal(auditStruct)
+		body, merr := json.Marshal(auditStruct)
 
 		//dump that shit into rabbitmq
+		if merr != nil {
+			fmt.Println("marshal error")
+		}
 
 		err = rmqChannel.Publish(
 			"",     // exchange
@@ -148,7 +157,11 @@ func QuoteAuditer(audits <-chan interface{}) {
 
 	for auditStruct := range audits {
 
-		body, _ := json.Marshal(auditStruct)
+		body, merr := json.Marshal(auditStruct)
+
+		if merr != nil {
+			fmt.Println("marshal error")
+		}
 
 		err = rmqChannel.Publish(
 			"",     // exchange

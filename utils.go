@@ -78,7 +78,7 @@ func audit(auditStruct interface{}) {
 
 func clearBuys() {
 	for {
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(5000 * time.Millisecond)
 
 		for userID := range buyMap {
 			topBuy := buyMap[userID].Peek()
@@ -105,7 +105,7 @@ func clearBuys() {
 
 func clearSells() {
 	for {
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(5000 * time.Millisecond)
 
 		for userID := range sellMap {
 			topSell := sellMap[userID].Peek()
@@ -129,24 +129,40 @@ func clearSells() {
 }
 
 func replaceFunds(thisBuy Buy, userID string) {
-	queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
-	stmt, err := db.Prepare(queryString)
+	// queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
+	// stmt, err := db.Prepare(queryString)
 
-	if err != nil {
+	// if err != nil {
+	// 	auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, Username: userID, ErrorMessage: "Error replacing funds", TransactionNum: 5}
+	// 	audit(auditError)
+	// 	failGracefully(err, "***COULD NOT REPLACE FUNDS")
+	// 	return
+	// }
+
+	// _, err = stmt.Exec(thisBuy.BuyAmount, userID)
+
+	// if err != nil {
+	// 	auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, Username: userID, ErrorMessage: "Error replacing funds", TransactionNum: 5}
+	// 	audit(auditError)
+	// 	failGracefully(err, "***COULD NOT REPLACE FUNDS")
+	// 	return
+	// }
+
+	c := Pool.Get()
+	defer c.Close()
+
+	if c == nil {
+		fmt.Println("lol no db haha")
+	}
+	_, rediserr := c.Do("INCRBY", userID, thisBuy.BuyAmount)
+
+	if rediserr != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, Username: userID, ErrorMessage: "Error replacing funds", TransactionNum: 5}
 		audit(auditError)
-		failGracefully(err, "***COULD NOT REPLACE FUNDS")
+		failGracefully(rediserr, "***COULD NOT REPLACE FUNDS")
 		return
 	}
 
-	_, err = stmt.Exec(thisBuy.BuyAmount, userID)
-
-	if err != nil {
-		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, Username: userID, ErrorMessage: "Error replacing funds", TransactionNum: 5}
-		audit(auditError)
-		failGracefully(err, "***COULD NOT REPLACE FUNDS")
-		return
-	}
 }
 
 func replaceStocks(thisSell Sell, userID string) {
