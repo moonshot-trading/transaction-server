@@ -79,6 +79,7 @@ type DebugEvent struct {
 	Username       string `json:"username"`
 	DebugMessage   string `json:"debugMessage"`
 	TransactionNum int    `json:"transactionNum"`
+	Path           string `json:"path"`
 }
 
 type QuoteServer struct {

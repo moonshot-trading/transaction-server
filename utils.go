@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
-	"os"
 )
 
 func runningInDocker() bool {
@@ -39,46 +37,48 @@ func failGracefully(err error, msg string) {
 	}
 }
 
-func sendToAuditServer(auditStruct interface{}, path string) {
-	jsonValue, _ := json.Marshal(auditStruct)
-	resp, err := http.Post("http://"+config.auditServer+":44417/"+path, "application/json", bytes.NewBuffer(jsonValue))
+func sendToAuditServer(auditStruct interface{}) {
 
-	if err != nil {
-		fmt.Printf("***FAILED TO AUDIT: %s", err)
-	}
+	// if auditStruct.Path
+	// auditChannel <- auditStruct
 
-	defer resp.Body.Close()
+	// jsonValue, _ := json.Marshal(auditStruct)
+	// resp, err := http.Post("http://"+config.auditServer+":44417/"+auditStruct.Path, "application/json", bytes.NewBuffer(jsonValue))
+
+	// if err != nil {
+	// 	fmt.Printf("***FAILED TO AUDIT: %s", err)
+	// }
+
+	// defer resp.Body.Close()
 }
 
 func audit(auditStruct interface{}) {
-	var path string
-	//  Check the type of auditStruct
+	// var path string
+	// //  Check the type of auditStruct
 	switch auditStruct.(type) {
 	case AccountTransaction:
-		path = "accountTransaction"
+		transactionChannel <- auditStruct
 
-	case SystemEvent:
-		path = "systemEvent"
+	// case SystemEvent:
+	// 	path = "systemEvent"
 
 	case ErrorEvent:
-		path = "errorEvent"
+		errorChannel <- auditStruct
 
-	case DebugEvent:
-		path = "debugEvent"
+	// case DebugEvent:
+	// 	path = "debugEvent"
 
 	case QuoteServer:
-		path = "quoteServer"
+		quoteChannel <- auditStruct
 
 	case UserCommand:
-		path = "userCommand"
+		userChannel <- auditStruct
 	}
-
-	sendToAuditServer(auditStruct, path)
 }
 
 func clearBuys() {
 	for {
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(5000 * time.Millisecond)
 
 		for userID := range buyMap {
 			topBuy := buyMap[userID].Peek()
@@ -105,7 +105,7 @@ func clearBuys() {
 
 func clearSells() {
 	for {
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(5000 * time.Millisecond)
 
 		for userID := range sellMap {
 			topSell := sellMap[userID].Peek()
@@ -129,24 +129,40 @@ func clearSells() {
 }
 
 func replaceFunds(thisBuy Buy, userID string) {
-	queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
-	stmt, err := db.Prepare(queryString)
+	// queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
+	// stmt, err := db.Prepare(queryString)
 
-	if err != nil {
+	// if err != nil {
+	// 	auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, Username: userID, ErrorMessage: "Error replacing funds", TransactionNum: 5}
+	// 	audit(auditError)
+	// 	failGracefully(err, "***COULD NOT REPLACE FUNDS")
+	// 	return
+	// }
+
+	// _, err = stmt.Exec(thisBuy.BuyAmount, userID)
+
+	// if err != nil {
+	// 	auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, Username: userID, ErrorMessage: "Error replacing funds", TransactionNum: 5}
+	// 	audit(auditError)
+	// 	failGracefully(err, "***COULD NOT REPLACE FUNDS")
+	// 	return
+	// }
+
+	c := Pool.Get()
+	defer c.Close()
+
+	if c == nil {
+		fmt.Println("lol no db haha")
+	}
+	_, rediserr := c.Do("INCRBY", userID, thisBuy.BuyAmount)
+
+	if rediserr != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, Username: userID, ErrorMessage: "Error replacing funds", TransactionNum: 5}
 		audit(auditError)
-		failGracefully(err, "***COULD NOT REPLACE FUNDS")
+		failGracefully(rediserr, "***COULD NOT REPLACE FUNDS")
 		return
 	}
 
-	_, err = stmt.Exec(thisBuy.BuyAmount, userID)
-
-	if err != nil {
-		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, Username: userID, ErrorMessage: "Error replacing funds", TransactionNum: 5}
-		audit(auditError)
-		failGracefully(err, "***COULD NOT REPLACE FUNDS")
-		return
-	}
 }
 
 func replaceStocks(thisSell Sell, userID string) {

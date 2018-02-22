@@ -34,29 +34,29 @@ CREATE TYPE command AS ENUM(
   'DISPLAY_SUMMARY'
 );
 
-CREATE TABLE IF NOT EXISTS users (
-  u_id          serial PRIMARY KEY,
-  user_name     VARCHAR(20) UNIQUE NOT NULL,
-  funds         INT CONSTRAINT positive_balance CHECK (0 <= funds)
-);
+-- CREATE TABLE IF NOT EXISTS users (
+--   u_id          serial PRIMARY KEY,
+--   user_name     VARCHAR(20) UNIQUE NOT NULL,
+--   funds         INT CONSTRAINT positive_balance CHECK (0 <= funds)
+-- );
 
 
 -- This table might be moved to redis?
 CREATE TABLE IF NOT EXISTS stocks (
-  user_name     VARCHAR(20) REFERENCES users(user_name),
+  user_name     VARCHAR(20),
   stock_symbol  VARCHAR(3),
   amount        NUMERIC CONSTRAINT positive_balance CHECK(0 <= amount),
   PRIMARY KEY (user_name, stock_symbol)
 );
 
--- This table will be moved to the audit server
-CREATE TABLE IF NOT EXISTS transactions (
-  t_id          serial PRIMARY KEY,
-  u_id          INT REFERENCES users(u_id),
-  command       command,
-  crypto_key    VARCHAR(20),
-  amount        NUMERIC,
-  stock_symbol  VARCHAR(3),
-  price         money,
-  time          TIMESTAMP
-);
+-- -- This table will be moved to the audit server
+-- CREATE TABLE IF NOT EXISTS transactions (
+--   t_id          serial PRIMARY KEY,
+--   u_id          INT REFERENCES users(u_id),
+--   command       command,
+--   crypto_key    VARCHAR(20),
+--   amount        NUMERIC,
+--   stock_symbol  VARCHAR(3),
+--   price         money,
+--   time          TIMESTAMP
+-- );
