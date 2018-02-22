@@ -80,8 +80,9 @@ func clearBuys() {
 	for {
 		time.Sleep(5000 * time.Millisecond)
 
-		for userID := range buyMap {
-			topBuy := buyMap[userID].Peek()
+		//for userID := range buyMap {
+		buyMap.Range(func(key, element interface{}) bool {
+			topBuy := element.(Stacker).Peek()
 
 			if topBuy != nil {
 				buyTime := topBuy.(Buy).BuyTimestamp
@@ -90,16 +91,16 @@ func clearBuys() {
 				//	if top one is too old, then the whole stack needs to be deleted
 				if buyTime+60000 < currentTime {
 
-					for buyMap[userID].Peek() != nil {
+					for element.(Stacker).Peek() != nil {
 						// cancel them repeatedly
-						nextBuy := buyMap[userID].Pop()
-						replaceFunds(nextBuy.(Buy), userID)
+						//nextBuy := buyMap[userID].Pop()
+						nextBuy := element.(Stacker).Pop()
+						replaceFunds(nextBuy.(Buy), key.(string))
 					}
 				}
-			} else {
-				continue
 			}
-		}
+			return true
+		})
 	}
 }
 
@@ -107,24 +108,25 @@ func clearSells() {
 	for {
 		time.Sleep(5000 * time.Millisecond)
 
-		for userID := range sellMap {
-			topSell := sellMap[userID].Peek()
+		//for userID := range sellMap {
+		sellMap.Range(func(key, element interface{}) bool {
+			topSell := element.(Stacker).Peek()
 
 			if topSell != nil {
 				sellTime := topSell.(Sell).SellTimestamp
 				currentTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
 
 				if sellTime+60000 < currentTime {
-					for sellMap[userID].Peek() != nil {
-						nextSell := sellMap[userID].Pop()
-						replaceStocks(nextSell.(Sell), userID)
+					for element.(Stacker).Peek() != nil {
+						//nextSell := sellMap[userID].Pop()
+						//replaceStocks(nextSell.(Sell), userID)
+						nextSell := element.(Stacker).Pop()
+						replaceStocks(nextSell.(Sell), key.(string))
 					}
 				}
-			} else {
-				continue
 			}
-		}
-
+			return true
+		})
 	}
 }
 

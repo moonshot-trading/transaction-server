@@ -1283,24 +1283,29 @@ func addBuyTimer(s string, u string) {
 		buyTriggerStockMap.Store(s, append(triggerList.([]string), u))
 
 		ticker := time.NewTicker(time.Second * 60)
-		buyTriggerTickerMap[s] = ticker
+		//buyTriggerTickerMap[s] = ticker
+		buyTriggerTickerMap.Store(s, ticker)
 
 		go func() {
-			for range buyTriggerTickerMap[s].C {
+			buyTicker, _ := buyTriggerTickerMap.Load(s)
+			for range buyTicker.(time.Ticker).C {
 				aggBuy <- s
 			}
 		}()
 
 	} else {
 		var add = true
-		for _, ele := range buyTriggerStockMap[s] {
+		thisStock, _ := buyTriggerStockMap.Load(s)
+		//for _, ele := range buyTriggerStockMap[s] {
+		for _, ele := range thisStock.([]string) {
 			if ele == u {
 				add = false
 				break
 			}
 		}
 		if add {
-			buyTriggerStockMap[s] = append(buyTriggerStockMap[s], u)
+			//buyTriggerStockMap[s] = append(buyTriggerStockMap[s], u)
+			buyTriggerStockMap.Store(s, append(thisStock.([]string), u))
 		}
 	}
 }
@@ -1309,33 +1314,44 @@ func removeBuyTimer(s string, u string) {
 
 	var na []string
 
-	for _, v := range buyTriggerStockMap[s] {
+	thisStock, _ := buyTriggerStockMap.Load(s)
+	//for _, v := range buyTriggerStockMap[s] {
+	for _, v := range thisStock.([]string) {
 		if v == u {
 			continue
 		} else {
 			na = append(na, v)
 		}
 	}
-	buyTriggerStockMap[s] = na
+	//buyTriggerStockMap[s] = na
+	buyTriggerStockMap.Store(s, na)
 	fmt.Println("stopotpotptoptop", na, s, u)
 
-	if len(buyTriggerStockMap[s]) == 0 {
+	thisStock, _ = buyTriggerStockMap.Load(s)
+	//if len(buyTriggerStockMap[s]) == 0 {
+	if len(thisStock.([]string)) == 0 {
 		fmt.Println("stopotpotptoptop")
-		if buyTriggerTickerMap[s] != nil {
-			buyTriggerTickerMap[s].Stop()
+		thisTicker, _ := buyTriggerTickerMap.Load(s)
+		if thisTicker != nil {
+			//buyTriggerTickerMap[s].Stop()
+			thisTicker.(*time.Ticker).Stop()
 		}
-		delete(buyTriggerTickerMap, s)
+		//delete(buyTriggerTickerMap, s)
+		buyTriggerTickerMap.Delete(s)
 	}
 }
 
 func addSellTimer(s string, u string) {
-	if len(sellTriggerStockMap[s]) == 0 {
+	stockList, _ := sellTriggerStockMap.Load(s)
+	if len(stockList.([]string)) == 0 {
 		//new trigger added
 		//set timer
-		sellTriggerStockMap[s] = append(sellTriggerStockMap[s], u)
+		//sellTriggerStockMap[s] = append(sellTriggerStockMap[s], u)
+		sellTriggerStockMap.Store(s, append(stockList.([]string), u))
 
 		ticker := time.NewTicker(time.Second * 60)
-		sellTriggerTickerMap[s] = ticker
+		//sellTriggerTickerMap[s] = ticker
+		sellTriggerTickerMap.Store(s, ticker)
 
 		go func() {
 			for range ticker.C {
@@ -1345,14 +1361,16 @@ func addSellTimer(s string, u string) {
 
 	} else {
 		var add = true
-		for _, ele := range sellTriggerStockMap[s] {
+		//for _, ele := range sellTriggerStockMap[s] {
+		for _, ele := range stockList.([]string) {
 			if ele == u {
 				add = false
 				break
 			}
 		}
 		if add {
-			sellTriggerStockMap[s] = append(sellTriggerStockMap[s], u)
+			//sellTriggerStockMap[s] = append(sellTriggerStockMap[s], u)
+			sellTriggerStockMap.Store(s, append(stockList.([]string), u))
 		}
 	}
 }
@@ -1361,17 +1379,24 @@ func removeSellTimer(s string, u string) {
 
 	var na []string
 
-	for _, v := range sellTriggerStockMap[s] {
+	thisStock, _ := sellTriggerStockMap.Load(s)
+	for _, v := range thisStock.([]string) {
 		if v == u {
 			continue
 		} else {
 			na = append(na, v)
 		}
 	}
-	sellTriggerStockMap[s] = na
-	if len(sellTriggerStockMap[s]) == 0 {
-		sellTriggerTickerMap[s].Stop()
-		delete(sellTriggerTickerMap, s)
+	//sellTriggerStockMap[s] = na
+	sellTriggerStockMap.Store(s, na)
+
+	thisStock, _ = sellTriggerStockMap.Load(s)
+	if len(thisStock.([]string)) == 0 {
+		//sellTriggerTickerMap[s].Stop()
+		thisTicker, _ := sellTriggerTickerMap.Load(s)
+		thisTicker.(*time.Ticker).Stop()
+		//delete(sellTriggerTickerMap, s)
+		sellTriggerTickerMap.Delete(s)
 	}
 }
 
@@ -1413,8 +1438,9 @@ func monitorBuyTriggers() {
 
 			//polling transaction number set to 8011
 			//	Get a quote
-			if len(buyTriggerStockMap[stockSymbol]) > 0 {
-				user := buyTriggerStockMap[stockSymbol][0] //blame first user
+			triggerStock, _ := buyTriggerStockMap.Load(stockSymbol)
+			if len(triggerStock.([]string)) > 0 {
+				user := triggerStock.([]string)[0] //blame first user
 
 				newQuote, err := getQuote(stockSymbol, user, 8011)
 
@@ -1425,7 +1451,7 @@ func monitorBuyTriggers() {
 					return
 				}
 
-				for _, UserId := range buyTriggerStockMap[stockSymbol] {
+				for _, UserId := range triggerStock.([]string) {
 					//check for each user if the new stock value is what their trigger wants
 
 					// Parse Quote
@@ -1436,7 +1462,8 @@ func monitorBuyTriggers() {
 					thisBuy.QuoteCryptoKey = newQuote.CryptoKey
 					thisBuy.StockSymbol = newQuote.StockSymbol
 					thisBuy.StockPrice = newQuote.Price
-					thisBuy.BuyAmount = buyTriggerMap[UserId+","+stockSymbol].BuyPrice
+					buyTrigger, _ := buyTriggerMap.Load(UserId + "," + stockSymbol)
+					thisBuy.BuyAmount = buyTrigger.(BuyTrigger).BuyPrice
 					//fmt.Println(thisBuy.StockSymbol, thisBuy.BuyAmount)
 					if int(thisBuy.StockPrice*100) <= thisBuy.BuyAmount {
 
@@ -1446,9 +1473,9 @@ func monitorBuyTriggers() {
 						//do confirm buy stuff
 
 						//	Calculate actual cost of buy
-						stockQuantity := int(buyTriggerMap[UserId+","+stockSymbol].BuyAmount / int(thisBuy.StockPrice*100))
+						stockQuantity := int(buyTrigger.(BuyTrigger).BuyAmount / int(thisBuy.StockPrice*100))
 						actualCharge := int(thisBuy.StockPrice*100) * stockQuantity
-						refundAmount := buyTriggerMap[UserId+","+stockSymbol].BuyAmount - actualCharge
+						refundAmount := buyTrigger.(BuyTrigger).BuyAmount - actualCharge
 
 						//	Put excess money back into account
 						// queryString := "UPDATE users SET funds = users.funds + $1 WHERE user_name = $2"
@@ -1523,8 +1550,9 @@ func monitorSellTriggers() {
 		for stockSymbol := range aggSell {
 			//	Get a quote
 
-			if len(sellTriggerStockMap[stockSymbol]) > 0 {
-				user := sellTriggerStockMap[stockSymbol][1] //blame it on the first user
+			triggerStock, _ := sellTriggerStockMap.Load(stockSymbol)
+			if len(triggerStock.([]string)) > 0 {
+				user := triggerStock.([]string)[1] //blame it on the first user
 
 				newQuote, err := getQuote(stockSymbol, user, 8011)
 
@@ -1535,7 +1563,7 @@ func monitorSellTriggers() {
 					return
 				}
 
-				for _, UserId := range sellTriggerStockMap[stockSymbol] {
+				for _, UserId := range triggerStock.([]string) {
 					// Parse Quote
 					thisSell := Sell{}
 
@@ -1544,12 +1572,13 @@ func monitorSellTriggers() {
 					thisSell.QuoteCryptoKey = newQuote.CryptoKey
 					thisSell.StockSymbol = newQuote.StockSymbol
 					thisSell.StockPrice = newQuote.Price
-					thisSell.SellAmount = sellTriggerMap[UserId+","+stockSymbol].SellPrice
+					sellTrigger, _ := sellTriggerMap.Load(UserId + "," + stockSymbol)
+					thisSell.SellAmount = sellTrigger.(SellTrigger).SellPrice
 
 					if int(thisSell.StockPrice*100) >= thisSell.SellAmount {
 
 						//	Add funds to their account
-						sellFunds := sellTriggerMap[UserId+","+stockSymbol].StockSellAmount * int(thisSell.StockPrice*100)
+						sellFunds := sellTrigger.(SellTrigger).StockSellAmount * int(thisSell.StockPrice*100)
 
 						// queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
 						// stmt, err := db.Prepare(queryString)
