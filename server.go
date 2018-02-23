@@ -336,7 +336,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuy.BuyAmount = req.Amount
 
 	//	Add buy to stack of pending buys
-	userBuyStack, loaded := buyMap.LoadOrStore(req.UserId, &Stack{})
+	userBuyStack, _ := buyMap.LoadOrStore(req.UserId, &Stack{})
 	userBuyStack.(Stacker).Push(thisBuy)
 
 	//	Send response back to client
@@ -1174,8 +1174,6 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	//	no sell trigger
 	auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_TRIGGER", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "No existing sell trigger", TransactionNum: req.TransactionNum}
 	failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
-
-	w.WriteHeader(http.StatusOK)
 }
 
 func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
