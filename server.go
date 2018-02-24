@@ -660,7 +660,7 @@ func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := decoder.Decode(&req)
 
-	userSellStack, _ := buyMap.Load(req.UserId)
+	userSellStack, _ := sellMap.Load(req.UserId)
 
 	if err != nil || userSellStack == nil || req.TransactionNum < 1 {
 		auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_SELL", StockSymbol: "0", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
@@ -1294,7 +1294,7 @@ func addBuyTimer(s string, u string) {
 
 		go func() {
 			buyTicker, _ := buyTriggerTickerMap.Load(s)
-			for range buyTicker.(time.Ticker).C {
+			for range buyTicker.(*time.Ticker).C {
 				aggBuy <- s
 			}
 		}()
@@ -1321,6 +1321,14 @@ func removeBuyTimer(s string, u string) {
 	var na []string
 
 	thisStock, _ := buyTriggerStockMap.Load(s)
+
+	if thisStock == nil {
+		newStringArray := make([]string, 0)
+		buyTriggerStockMap.Store(s, newStringArray)
+	}
+
+	thisStock, _ = buyTriggerStockMap.Load(s)
+
 	//for _, v := range buyTriggerStockMap[s] {
 	for _, v := range thisStock.([]string) {
 		if v == u {
@@ -1566,7 +1574,7 @@ func monitorSellTriggers() {
 
 			triggerStock, _ := sellTriggerStockMap.Load(stockSymbol)
 			if len(triggerStock.([]string)) > 0 {
-				user := triggerStock.([]string)[1] //blame it on the first user
+				user := triggerStock.([]string)[0] //blame it on the first user
 
 				newQuote, err := getQuote(stockSymbol, user, 8011)
 
@@ -1587,6 +1595,9 @@ func monitorSellTriggers() {
 					thisSell.StockSymbol = newQuote.StockSymbol
 					thisSell.StockPrice = newQuote.Price
 					sellTrigger, _ := sellTriggerMap.Load(UserId + "," + stockSymbol)
+					if sellTrigger == nil {
+						return
+					}
 					thisSell.SellAmount = sellTrigger.(SellTrigger).SellPrice
 
 					if int(thisSell.StockPrice*100) >= thisSell.SellAmount {
