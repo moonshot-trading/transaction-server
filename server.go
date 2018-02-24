@@ -1274,6 +1274,14 @@ func dumpLogHandler(w http.ResponseWriter, r *http.Request) {
 
 func addBuyTimer(s string, u string) {
 	triggerList, _ := buyTriggerStockMap.Load(s)
+
+	if triggerList == nil {
+		newStringArray := make([]string, 0)
+		buyTriggerStockMap.Store(s, newStringArray)
+	}
+
+	triggerList, _ = buyTriggerStockMap.Load(s)
+
 	if len(triggerList.([]string)) == 0 {
 		//new trigger added
 		//set timer
@@ -1341,6 +1349,14 @@ func removeBuyTimer(s string, u string) {
 
 func addSellTimer(s string, u string) {
 	stockList, _ := sellTriggerStockMap.Load(s)
+
+	if stockList == nil {
+		newStringArray := make([]string, 0)
+		sellTriggerStockMap.Store(s, newStringArray)
+	}
+
+	stockList, _ = sellTriggerStockMap.Load(s)
+
 	if len(stockList.([]string)) == 0 {
 		//new trigger added
 		//set timer
