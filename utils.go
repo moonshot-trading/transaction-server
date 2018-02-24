@@ -37,21 +37,6 @@ func failGracefully(err error, msg string) {
 	}
 }
 
-func sendToAuditServer(auditStruct interface{}) {
-
-	// if auditStruct.Path
-	// auditChannel <- auditStruct
-
-	// jsonValue, _ := json.Marshal(auditStruct)
-	// resp, err := http.Post("http://"+config.auditServer+":44417/"+auditStruct.Path, "application/json", bytes.NewBuffer(jsonValue))
-
-	// if err != nil {
-	// 	fmt.Printf("***FAILED TO AUDIT: %s", err)
-	// }
-
-	// defer resp.Body.Close()
-}
-
 func audit(auditStruct interface{}) {
 	// var path string
 	// //  Check the type of auditStruct
@@ -80,7 +65,6 @@ func clearBuys() {
 	for {
 		time.Sleep(5000 * time.Millisecond)
 
-		//for userID := range buyMap {
 		buyMap.Range(func(key, element interface{}) bool {
 			topBuy := element.(Stacker).Peek()
 
@@ -93,7 +77,6 @@ func clearBuys() {
 
 					for element.(Stacker).Peek() != nil {
 						// cancel them repeatedly
-						//nextBuy := buyMap[userID].Pop()
 						nextBuy := element.(Stacker).Pop()
 						replaceFunds(nextBuy.(Buy), key.(string))
 					}
@@ -108,7 +91,6 @@ func clearSells() {
 	for {
 		time.Sleep(5000 * time.Millisecond)
 
-		//for userID := range sellMap {
 		sellMap.Range(func(key, element interface{}) bool {
 			topSell := element.(Stacker).Peek()
 
@@ -119,7 +101,6 @@ func clearSells() {
 				if sellTime+60000 < currentTime {
 					for element.(Stacker).Peek() != nil {
 						//nextSell := sellMap[userID].Pop()
-						//replaceStocks(nextSell.(Sell), userID)
 						nextSell := element.(Stacker).Pop()
 						replaceStocks(nextSell.(Sell), key.(string))
 					}
@@ -131,25 +112,6 @@ func clearSells() {
 }
 
 func replaceFunds(thisBuy Buy, userID string) {
-	// queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
-	// stmt, err := db.Prepare(queryString)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, Username: userID, ErrorMessage: "Error replacing funds", TransactionNum: 5}
-	// 	audit(auditError)
-	// 	failGracefully(err, "***COULD NOT REPLACE FUNDS")
-	// 	return
-	// }
-
-	// _, err = stmt.Exec(thisBuy.BuyAmount, userID)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, Username: userID, ErrorMessage: "Error replacing funds", TransactionNum: 5}
-	// 	audit(auditError)
-	// 	failGracefully(err, "***COULD NOT REPLACE FUNDS")
-	// 	return
-	// }
-
 	c := Pool.Get()
 	defer c.Close()
 

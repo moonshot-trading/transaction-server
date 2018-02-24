@@ -31,24 +31,16 @@ var (
 		}
 	}()
 
-	Pool            *redis.Pool
-	quoteServerPort = "44418"
-	db              = loadDB()
-	// buyMap               = make(map[string]*Stack)
-	buyMap = new(sync.Map)
-	// buyTriggerMap        = make(map[string]BuyTrigger)
-	buyTriggerMap = new(sync.Map)
-	// sellMap              = make(map[string]*Stack)
-	sellMap = new(sync.Map)
-	// sellTriggerMap       = make(map[string]SellTrigger)
-	sellTriggerMap = new(sync.Map)
-	// sellTriggerStockMap  = make(map[string][]string)
-	sellTriggerStockMap = new(sync.Map)
-	// buyTriggerStockMap   = make(map[string][]string)
-	buyTriggerStockMap = new(sync.Map)
-	// buyTriggerTickerMap  = make(map[string]*time.Ticker)
-	buyTriggerTickerMap = new(sync.Map)
-	// sellTriggerTickerMap = make(map[string]*time.Ticker)
+	Pool                 *redis.Pool
+	quoteServerPort      = "44418"
+	db                   = loadDB()
+	buyMap               = new(sync.Map)
+	buyTriggerMap        = new(sync.Map)
+	sellMap              = new(sync.Map)
+	sellTriggerMap       = new(sync.Map)
+	sellTriggerStockMap  = new(sync.Map)
+	buyTriggerStockMap   = new(sync.Map)
+	buyTriggerTickerMap  = new(sync.Map)
 	sellTriggerTickerMap = new(sync.Map)
 	aggBuy               = make(chan string)
 	aggSell              = make(chan string)
@@ -76,9 +68,6 @@ type GetQuote struct {
 }
 
 func getQuote(stockSymbol string, userId string, transactionNum int) (Quote, error) {
-
-	// conn, err := net.Dial("tcp", "localhost:44415")
-	// defer conn.Close()
 
 	q := GetQuote{}
 	q.UserId = userId
@@ -191,31 +180,6 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//queryString := "INSERT INTO users(user_name, funds) VALUES($1, $2) ON CONFLICT (user_name) DO UPDATE SET funds = users.funds + $2"
-	//stmt, err := db.Prepare(queryString)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "ADD", StockSymbol: "0", Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adding funds", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
-	// res, err := stmt.Exec(req.UserId, req.Amount)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "ADD", StockSymbol: "0", Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adding funds", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
-	// numRows, err := res.RowsAffected()
-
-	// if numRows < 1 {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "ADD", StockSymbol: "0", Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adding funds", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
 	c := Pool.Get()
 	defer c.Close()
 
@@ -254,33 +218,6 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	buyTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
-
-	//	Check if user has funds to buy at this price
-
-	// queryString := "UPDATE users SET funds = users.funds - $1 WHERE user_name = $2"
-	// stmt, err := db.Prepare(queryString)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Internal Server Error", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
-	// res, err := stmt.Exec(req.Amount, req.UserId)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Could not reserve funds for BUY", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
-	// numRows, err := res.RowsAffected()
-
-	// if numRows < 1 {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Could not reserve funds for BUY", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(errors.New("Couldn't update account buy"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
 
 	c := Pool.Get()
 	defer c.Close()
@@ -378,24 +315,6 @@ func cancelBuyHandler(w http.ResponseWriter, r *http.Request) {
 	auditEventU := UserCommand{Server: SERVER, Command: "CANCEL_BUY", Username: req.UserId, StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, TransactionNum: req.TransactionNum}
 	audit(auditEventU)
 
-	//	Return funds to account
-	// queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
-	// stmt, err := db.Prepare(queryString)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, Username: req.UserId, ErrorMessage: "Error replacing funds", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
-	// _, err = stmt.Exec(latestBuy.(Buy).BuyAmount, req.UserId)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, Username: req.UserId, ErrorMessage: "Error replacing funds", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
 	c := Pool.Get()
 	defer c.Close()
 
@@ -456,24 +375,6 @@ func confirmBuyHandler(w http.ResponseWriter, r *http.Request) {
 	stockQuantity := int(latestBuy.(Buy).BuyAmount / int(latestBuy.(Buy).StockPrice*100))
 	actualCharge := int(latestBuy.(Buy).StockPrice*100) * stockQuantity
 	refundAmount := latestBuy.(Buy).BuyAmount - actualCharge
-
-	//	Put excess money back into account
-	// queryString := "UPDATE users SET funds = users.funds + $1 WHERE user_name = $2"
-	// stmt, err := db.Prepare(queryString)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_BUY", StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, Username: req.UserId, ErrorMessage: "Error purchasing stock", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
-	// _, err = stmt.Exec(refundAmount, req.UserId)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_BUY", StockSymbol: latestBuy.(Buy).StockSymbol, Filename: FILENAME, Funds: latestBuy.(Buy).BuyAmount, Username: req.UserId, ErrorMessage: "Error purchasing stock", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
 
 	c := Pool.Get()
 	defer c.Close()
@@ -688,23 +589,6 @@ func confirmSellHandler(w http.ResponseWriter, r *http.Request) {
 	//	Add funds to their account
 	sellFunds := latestSell.(Sell).StockSellAmount * int(latestSell.(Sell).StockPrice*100)
 
-	// queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
-	// stmt, err := db.Prepare(queryString)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_SELL", StockSymbol: latestSell.(Sell).StockSymbol, Filename: FILENAME, Funds: latestSell.(Sell).SellAmount, Username: req.UserId, ErrorMessage: "Could not update funds", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
-	// _, err = stmt.Exec(sellFunds, req.UserId)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "COMMIT_SELL", StockSymbol: latestSell.(Sell).StockSymbol, Filename: FILENAME, Funds: latestSell.(Sell).SellAmount, Username: req.UserId, ErrorMessage: "Could not update funds", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
 	c := Pool.Get()
 	defer c.Close()
 
@@ -748,37 +632,14 @@ func setBuyHandler(w http.ResponseWriter, r *http.Request) {
 	//	Get time for new timestamp
 	buyTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
 
-	//	return the old buy funds if a buy already exists
-	//if _, exists := buyTriggerMap[req.UserId+","+req.StockSymbol]; exists {
-
 	userBuyTrigger, _ := buyTriggerMap.Load(req.UserId + "," + req.StockSymbol)
-
 	if userBuyTrigger != nil {
-
-		// queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
-		// stmt, err := db.Prepare(queryString)
-
-		// if err != nil {
-		// 	auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Unable to update trigger", TransactionNum: req.TransactionNum}
-		// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-		// 	return
-		// }
-
-		// _, err = stmt.Exec(buyTriggerMap[req.UserId+","+req.StockSymbol].BuyAmount, req.UserId)
-
-		// if err != nil {
-		// 	auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Unable to update trigger", TransactionNum: req.TransactionNum}
-		// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-		// 	return
-		// }
-
 		c := Pool.Get()
 		defer c.Close()
 
 		if c == nil {
 			fmt.Println("lol no db haha")
 		}
-		//_, rediserr := c.Do("INCRBY", req.UserId, buyTriggerMap[req.UserId+","+req.StockSymbol].BuyAmount)
 		_, rediserr := c.Do("INCRBY", req.UserId, userBuyTrigger.(BuyTrigger).BuyAmount)
 		if rediserr != nil {
 			auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Unable to update trigger", TransactionNum: req.TransactionNum}
@@ -787,32 +648,6 @@ func setBuyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 	}
-
-	//	Check if user has funds to buy at this price
-	// queryString := "UPDATE users SET funds = users.funds - $1 WHERE user_name = $2"
-	// stmt, err := db.Prepare(queryString)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adjusting funds", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
-	// res, err := stmt.Exec(req.Amount, req.UserId)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adjusting funds", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
-	// numRows, err := res.RowsAffected()
-
-	// if numRows < 1 {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_AMOUNT", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adjusting funds", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(errors.New("Couldn't update account"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
 
 	c := Pool.Get()
 	defer c.Close()
@@ -850,7 +685,6 @@ func setBuyHandler(w http.ResponseWriter, r *http.Request) {
 	thisBuyTrigger.BuyPrice = -1
 	thisBuyTrigger.StockSymbol = req.StockSymbol
 
-	//buyTriggerMap[req.UserId+","+req.StockSymbol] = thisBuyTrigger
 	buyTriggerMap.Store(req.UserId+","+req.StockSymbol, thisBuyTrigger)
 
 	//	Send response back to client
@@ -877,36 +711,14 @@ func cancelSetBuyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//If there is actually an existing BuyTrigger
-	//if existingBuyTrigger, exists := buyTriggerMap[req.UserId+","+req.StockSymbol]; exists {
-
 	userBuyTrigger, _ := buyTriggerMap.Load(req.UserId + "," + req.StockSymbol)
-
 	if userBuyTrigger != nil {
-
-		// 	queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
-		// 	stmt, err := db.Prepare(queryString)
-
-		// 	if err != nil {
-		// 		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SET_BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Unable to return funds", TransactionNum: req.TransactionNum}
-		// 		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-		// 		return
-		// 	}
-
-		// 	_, err = stmt.Exec(existingBuyTrigger.BuyAmount, req.UserId)
-
-		// 	if err != nil {
-		// 		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SET_BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Unable to return funds", TransactionNum: req.TransactionNum}
-		// 		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-		// 		return
-		// 	}
-
 		c := Pool.Get()
 		defer c.Close()
 
 		if c == nil {
 			fmt.Println("lol no db haha")
 		}
-		//_, rediserr := c.Do("INCRBY", req.UserId, existingBuyTrigger.BuyAmount)
 		_, rediserr := c.Do("INCRBY", req.UserId, userBuyTrigger.(BuyTrigger).BuyAmount)
 
 		if rediserr != nil {
@@ -916,7 +728,6 @@ func cancelSetBuyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		//remove trigger also if it exists
-		//delete(buyTriggerMap, req.UserId+","+req.StockSymbol)
 		buyTriggerMap.Delete(req.UserId + "," + req.StockSymbol)
 
 		removeBuyTimer(req.StockSymbol, req.UserId)
@@ -951,15 +762,8 @@ func setBuyTriggerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//	Check if there is an existing trigger
-	//if existingBuyTrigger, exists := buyTriggerMap[req.UserId+","+req.StockSymbol]; exists {
-
 	userBuyTrigger, _ := buyTriggerMap.Load(req.UserId + "," + req.StockSymbol)
-
 	if userBuyTrigger != nil {
-
-		//userBuyTrigger.(BuyTrigger).BuyPrice
-
-		//newBuyTrigger := userBuyTrigger
 		newBuyTrigger := BuyTrigger{}
 		newBuyTrigger.BuyAmount = req.Amount
 		newBuyTrigger.BuyPrice = userBuyTrigger.(BuyTrigger).BuyPrice
@@ -1001,12 +805,8 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 
 	sellTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
 
-	//if existingSellTrigger, exists := sellTriggerMap[req.UserId+","+req.StockSymbol]; exists {
-
 	existingSellTrigger, _ := sellTriggerMap.Load(req.UserId + "," + req.StockSymbol)
-
 	if existingSellTrigger != nil {
-
 		//	return stocks
 		queryString := "UPDATE stocks SET amount = amount + $1 WHERE user_name = $2 AND stock_symbol = $3"
 		stmt, err := db.Prepare(queryString)
@@ -1036,7 +836,6 @@ func setSellHandler(w http.ResponseWriter, r *http.Request) {
 	//  StockSellAmount cannot be figured out until the trigger point is set
 	thisSellTrigger.StockSellAmount = 0
 
-	//sellTriggerMap[req.UserId+","+req.StockSymbol] = thisSellTrigger
 	sellTriggerMap.Store(req.UserId+","+req.StockSymbol, thisSellTrigger)
 
 	w.WriteHeader(http.StatusOK)
@@ -1061,10 +860,7 @@ func cancelSetSellHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//if existingSellTrigger, exists := sellTriggerMap[req.UserId+","+req.StockSymbol]; exists {
-
 	existingSellTrigger, _ := sellTriggerMap.Load(req.UserId + "," + req.StockSymbol)
-
 	if existingSellTrigger != nil {
 		//	Return stocks to portfolio
 		queryString := "UPDATE stocks SET amount = amount + $1 WHERE user_name = $2  AND stock_symbol = $3"
@@ -1085,7 +881,6 @@ func cancelSetSellHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// remove the trigger
-		//delete(sellTriggerMap, req.UserId+","+req.StockSymbol)
 		sellTriggerMap.Delete(req.UserId + "," + req.StockSymbol)
 
 		w.WriteHeader(http.StatusOK)
@@ -1117,10 +912,7 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//if existingSellTrigger, exists := sellTriggerMap[req.UserId+","+req.StockSymbol]; exists {
-
 	existingSellTrigger, _ := sellTriggerMap.Load(req.UserId + "," + req.StockSymbol)
-
 	if existingSellTrigger != nil {
 		//	REMOVE THE MAXIMUM NUMBER OF STOCKS THAT COULD BE NEEDED TO FILL THIS SELL ORDER
 		newSellTrigger := SellTrigger{}
@@ -1128,7 +920,6 @@ func setSellTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		newSellTrigger.SellPrice = existingSellTrigger.(SellTrigger).SellPrice
 		newSellTrigger.SetSellTimestamp = existingSellTrigger.(SellTrigger).SetSellTimestamp
 		newSellTrigger.StockSymbol = existingSellTrigger.(SellTrigger).StockSymbol
-
 		newSellTrigger.StockSellAmount = int(math.Ceil(float64(existingSellTrigger.(SellTrigger).SellAmount) / float64(req.Amount)))
 
 		sellTriggerMap.Store(req.UserId+","+req.StockSymbol, newSellTrigger)
@@ -1193,26 +984,6 @@ func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
 		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
-
-	//	Get their current balance
-	// queryString := "SELECT funds FROM users WHERE user_name = $1"
-
-	// stmt, err := db.Prepare(queryString)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "DISPLAY_SUMMARY", StockSymbol: "0", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Error fetching account information", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-	// 	return
-	// }
-
-	// var userFunds int
-	// err = stmt.QueryRow(req.UserId).Scan(&userFunds)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "DISPLAY_SUMMARY", StockSymbol: "0", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Error fetching account information", TransactionNum: req.TransactionNum}
-	// 	failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
-	// 	return
-	// }
 
 	c := Pool.Get()
 	defer c.Close()
@@ -1285,11 +1056,9 @@ func addBuyTimer(s string, u string) {
 	if len(triggerList.([]string)) == 0 {
 		//new trigger added
 		//set timer
-		//buyTriggerStockMap[s] = append(buyTriggerStockMap[s], u)
 		buyTriggerStockMap.Store(s, append(triggerList.([]string), u))
 
 		ticker := time.NewTicker(time.Second * 60)
-		//buyTriggerTickerMap[s] = ticker
 		buyTriggerTickerMap.Store(s, ticker)
 
 		go func() {
@@ -1302,7 +1071,6 @@ func addBuyTimer(s string, u string) {
 	} else {
 		var add = true
 		thisStock, _ := buyTriggerStockMap.Load(s)
-		//for _, ele := range buyTriggerStockMap[s] {
 		for _, ele := range thisStock.([]string) {
 			if ele == u {
 				add = false
@@ -1310,14 +1078,12 @@ func addBuyTimer(s string, u string) {
 			}
 		}
 		if add {
-			//buyTriggerStockMap[s] = append(buyTriggerStockMap[s], u)
 			buyTriggerStockMap.Store(s, append(thisStock.([]string), u))
 		}
 	}
 }
 
 func removeBuyTimer(s string, u string) {
-
 	var na []string
 
 	thisStock, _ := buyTriggerStockMap.Load(s)
@@ -1329,7 +1095,6 @@ func removeBuyTimer(s string, u string) {
 
 	thisStock, _ = buyTriggerStockMap.Load(s)
 
-	//for _, v := range buyTriggerStockMap[s] {
 	for _, v := range thisStock.([]string) {
 		if v == u {
 			continue
@@ -1337,20 +1102,16 @@ func removeBuyTimer(s string, u string) {
 			na = append(na, v)
 		}
 	}
-	//buyTriggerStockMap[s] = na
 	buyTriggerStockMap.Store(s, na)
 	fmt.Println("stopotpotptoptop", na, s, u)
 
 	thisStock, _ = buyTriggerStockMap.Load(s)
-	//if len(buyTriggerStockMap[s]) == 0 {
 	if len(thisStock.([]string)) == 0 {
 		fmt.Println("stopotpotptoptop")
 		thisTicker, _ := buyTriggerTickerMap.Load(s)
 		if thisTicker != nil {
-			//buyTriggerTickerMap[s].Stop()
 			thisTicker.(*time.Ticker).Stop()
 		}
-		//delete(buyTriggerTickerMap, s)
 		buyTriggerTickerMap.Delete(s)
 	}
 }
@@ -1368,11 +1129,9 @@ func addSellTimer(s string, u string) {
 	if len(stockList.([]string)) == 0 {
 		//new trigger added
 		//set timer
-		//sellTriggerStockMap[s] = append(sellTriggerStockMap[s], u)
 		sellTriggerStockMap.Store(s, append(stockList.([]string), u))
 
 		ticker := time.NewTicker(time.Second * 60)
-		//sellTriggerTickerMap[s] = ticker
 		sellTriggerTickerMap.Store(s, ticker)
 
 		go func() {
@@ -1383,7 +1142,6 @@ func addSellTimer(s string, u string) {
 
 	} else {
 		var add = true
-		//for _, ele := range sellTriggerStockMap[s] {
 		for _, ele := range stockList.([]string) {
 			if ele == u {
 				add = false
@@ -1391,14 +1149,12 @@ func addSellTimer(s string, u string) {
 			}
 		}
 		if add {
-			//sellTriggerStockMap[s] = append(sellTriggerStockMap[s], u)
 			sellTriggerStockMap.Store(s, append(stockList.([]string), u))
 		}
 	}
 }
 
 func removeSellTimer(s string, u string) {
-
 	var na []string
 
 	thisStock, _ := sellTriggerStockMap.Load(s)
@@ -1409,15 +1165,12 @@ func removeSellTimer(s string, u string) {
 			na = append(na, v)
 		}
 	}
-	//sellTriggerStockMap[s] = na
 	sellTriggerStockMap.Store(s, na)
 
 	thisStock, _ = sellTriggerStockMap.Load(s)
 	if len(thisStock.([]string)) == 0 {
-		//sellTriggerTickerMap[s].Stop()
 		thisTicker, _ := sellTriggerTickerMap.Load(s)
 		thisTicker.(*time.Ticker).Stop()
-		//delete(sellTriggerTickerMap, s)
 		sellTriggerTickerMap.Delete(s)
 	}
 }
@@ -1479,14 +1232,13 @@ func monitorBuyTriggers() {
 					// Parse Quote
 					thisBuy := Buy{}
 
-					//thisBuy.BuyTimestamp = buyTime
 					thisBuy.QuoteTimestamp = newQuote.Timestamp
 					thisBuy.QuoteCryptoKey = newQuote.CryptoKey
 					thisBuy.StockSymbol = newQuote.StockSymbol
 					thisBuy.StockPrice = newQuote.Price
 					buyTrigger, _ := buyTriggerMap.Load(UserId + "," + stockSymbol)
 					thisBuy.BuyAmount = buyTrigger.(BuyTrigger).BuyPrice
-					//fmt.Println(thisBuy.StockSymbol, thisBuy.BuyAmount)
+
 					if int(thisBuy.StockPrice*100) <= thisBuy.BuyAmount {
 
 						//we check the current value to see if the trigger goes right away
@@ -1498,28 +1250,6 @@ func monitorBuyTriggers() {
 						stockQuantity := int(buyTrigger.(BuyTrigger).BuyAmount / int(thisBuy.StockPrice*100))
 						actualCharge := int(thisBuy.StockPrice*100) * stockQuantity
 						refundAmount := buyTrigger.(BuyTrigger).BuyAmount - actualCharge
-
-						//	Put excess money back into account
-						// queryString := "UPDATE users SET funds = users.funds + $1 WHERE user_name = $2"
-						// stmt, err := db.Prepare(queryString)
-
-						// if err != nil {
-						// 	auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: stockSymbol, Filename: FILENAME, Funds: refundAmount, Username: UserId, ErrorMessage: "Error returning funds", TransactionNum: 8011}
-						// 	//failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-						// 	//fmt.Println("er -1")
-						// 	audit(auditError)
-						// 	return
-						// }
-
-						// _, err = stmt.Exec(refundAmount, UserId)
-
-						// if err != nil {
-						// 	auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: stockSymbol, Filename: FILENAME, Funds: refundAmount, Username: UserId, ErrorMessage: "Error returning funds", TransactionNum: 8011}
-						// 	audit(auditError)
-						// 	//failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-						// 	//fmt.Println("er 0")
-						// 	return
-						// }
 
 						c := Pool.Get()
 						defer c.Close()
@@ -1543,7 +1273,6 @@ func monitorBuyTriggers() {
 							auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: stockSymbol, Filename: FILENAME, Funds: stockQuantity, Username: UserId, ErrorMessage: "Error allocating stocks", TransactionNum: 8011}
 							audit(auditError)
 							//failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-							//fmt.Println("er 1")
 							return
 						}
 
@@ -1552,7 +1281,6 @@ func monitorBuyTriggers() {
 						if err != nil {
 							auditError := ErrorEvent{Server: SERVER, Command: "SET_BUY_TRIGGER", StockSymbol: stockSymbol, Filename: FILENAME, Funds: stockQuantity, Username: UserId, ErrorMessage: "Error allocating stocks", TransactionNum: 8011}
 							//failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-							//fmt.Println("er 2")
 							audit(auditError)
 							return
 						}
@@ -1604,25 +1332,6 @@ func monitorSellTriggers() {
 
 						//	Add funds to their account
 						sellFunds := sellTrigger.(SellTrigger).StockSellAmount * int(thisSell.StockPrice*100)
-
-						// queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
-						// stmt, err := db.Prepare(queryString)
-
-						// if err != nil {
-						// 	auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_TRIGGER", StockSymbol: thisSell.StockSymbol, Filename: FILENAME, Funds: thisSell.SellAmount, Username: UserId, ErrorMessage: "Error adding funds", TransactionNum: 8011}
-						// 	audit(auditError)
-						// 	//failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-						// 	return
-						// }
-
-						// _, err = stmt.Exec(sellFunds, UserId)
-
-						// if err != nil {
-						// 	auditError := ErrorEvent{Server: SERVER, Command: "SET_SELL_TRIGGER", StockSymbol: thisSell.StockSymbol, Filename: FILENAME, Funds: thisSell.SellAmount, Username: UserId, ErrorMessage: "Error adding funds", TransactionNum: 8011}
-						// 	audit(auditError)
-						// 	//failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
-						// 	return
-						// }
 
 						c := Pool.Get()
 						defer c.Close()
