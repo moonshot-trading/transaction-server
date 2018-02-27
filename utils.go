@@ -37,21 +37,6 @@ func failGracefully(err error, msg string) {
 	}
 }
 
-func sendToAuditServer(auditStruct interface{}) {
-
-	// if auditStruct.Path
-	// auditChannel <- auditStruct
-
-	// jsonValue, _ := json.Marshal(auditStruct)
-	// resp, err := http.Post("http://"+config.auditServer+":44417/"+auditStruct.Path, "application/json", bytes.NewBuffer(jsonValue))
-
-	// if err != nil {
-	// 	fmt.Printf("***FAILED TO AUDIT: %s", err)
-	// }
-
-	// defer resp.Body.Close()
-}
-
 func audit(auditStruct interface{}) {
 	// var path string
 	// //  Check the type of auditStruct
@@ -80,8 +65,8 @@ func clearBuys() {
 	for {
 		time.Sleep(5000 * time.Millisecond)
 
-		for userID := range buyMap {
-			topBuy := buyMap[userID].Peek()
+		buyMap.Range(func(key, element interface{}) bool {
+			topBuy := element.(Stacker).Peek()
 
 			if topBuy != nil {
 				buyTime := topBuy.(Buy).BuyTimestamp
@@ -90,16 +75,15 @@ func clearBuys() {
 				//	if top one is too old, then the whole stack needs to be deleted
 				if buyTime+60000 < currentTime {
 
-					for buyMap[userID].Peek() != nil {
+					for element.(Stacker).Peek() != nil {
 						// cancel them repeatedly
-						nextBuy := buyMap[userID].Pop()
-						replaceFunds(nextBuy.(Buy), userID)
+						nextBuy := element.(Stacker).Pop()
+						replaceFunds(nextBuy.(Buy), key.(string))
 					}
 				}
-			} else {
-				continue
 			}
-		}
+			return true
+		})
 	}
 }
 
@@ -107,47 +91,27 @@ func clearSells() {
 	for {
 		time.Sleep(5000 * time.Millisecond)
 
-		for userID := range sellMap {
-			topSell := sellMap[userID].Peek()
+		sellMap.Range(func(key, element interface{}) bool {
+			topSell := element.(Stacker).Peek()
 
 			if topSell != nil {
 				sellTime := topSell.(Sell).SellTimestamp
 				currentTime := int64(time.Nanosecond) * int64(time.Now().UnixNano()) / int64(time.Millisecond)
 
 				if sellTime+60000 < currentTime {
-					for sellMap[userID].Peek() != nil {
-						nextSell := sellMap[userID].Pop()
-						replaceStocks(nextSell.(Sell), userID)
+					for element.(Stacker).Peek() != nil {
+						//nextSell := sellMap[userID].Pop()
+						nextSell := element.(Stacker).Pop()
+						replaceStocks(nextSell.(Sell), key.(string))
 					}
 				}
-			} else {
-				continue
 			}
-		}
-
+			return true
+		})
 	}
 }
 
 func replaceFunds(thisBuy Buy, userID string) {
-	// queryString := "UPDATE users SET funds = funds + $1 WHERE user_name = $2"
-	// stmt, err := db.Prepare(queryString)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, Username: userID, ErrorMessage: "Error replacing funds", TransactionNum: 5}
-	// 	audit(auditError)
-	// 	failGracefully(err, "***COULD NOT REPLACE FUNDS")
-	// 	return
-	// }
-
-	// _, err = stmt.Exec(thisBuy.BuyAmount, userID)
-
-	// if err != nil {
-	// 	auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_BUY", StockSymbol: thisBuy.StockSymbol, Filename: FILENAME, Funds: thisBuy.BuyAmount, Username: userID, ErrorMessage: "Error replacing funds", TransactionNum: 5}
-	// 	audit(auditError)
-	// 	failGracefully(err, "***COULD NOT REPLACE FUNDS")
-	// 	return
-	// }
-
 	c := Pool.Get()
 	defer c.Close()
 
