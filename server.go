@@ -25,15 +25,13 @@ import (
 var (
 	config = func() transactionConfig {
 		if runningInDocker() {
-			//return transactionConfig{"quote-server", "audit-server", "postgres"}
-			return transactionConfig{"192.168.1.143", "192.168.1.143", "postgres"}
+			return loadConfigDocker()
 		} else {
-			return transactionConfig{"localhost", "localhost", "localhost"}
+			return loadConfigLocal()
 		}
 	}()
 
 	Pool                 *redis.Pool
-	quoteServerPort      = "44418"
 	db                   = loadDB()
 	buyMap               = new(sync.Map)
 	buyTriggerMap        = new(sync.Map)
@@ -45,13 +43,14 @@ var (
 	sellTriggerTickerMap = new(sync.Map)
 	aggBuy               = make(chan string)
 	aggSell              = make(chan string)
-	SERVER               = "1"
-	FILENAME             = "10userWorkLoad"
 	rmqConn              *amqp.Connection
 	transactionChannel   = make(chan interface{})
 	errorChannel         = make(chan interface{})
 	userChannel          = make(chan interface{})
 	quoteChannel         = make(chan interface{})
+
+	SERVER   = "1"
+	FILENAME = "10userWorkLoad"
 )
 
 type Quote struct {
@@ -68,13 +67,35 @@ type GetQuote struct {
 	StockSymbol string
 }
 
-func getQuote(stockSymbol string, userId string, transactionNum int) (Quote, error) {
+func loadConfigDocker() transactionConfig {
+	newConfig := transactionConfig{}
+	newConfig.auditServer = os.Getenv("AUDIT_SERVER_HOST")
+	newConfig.quoteServer = os.Getenv("QUOTE_SERVER_HOST")
+	newConfig.quotePort = os.Getenv("QUOTE_SERVER_PORT")
+	newConfig.db = os.Getenv("TX_POSTGRES_HOST")
+	newConfig.port = os.Getenv("TX_SERVER_PORT")
+	newConfig.rabbitMQ = os.Getenv("TX_RABBITMQ_CONN_STRING")
+	return newConfig
+}
 
+func loadConfigLocal() transactionConfig {
+	// for my friend geoff
+	newConfig := transactionConfig{}
+	newConfig.auditServer = "localhost"
+	newConfig.quoteServer = "localhost"
+	newConfig.quotePort = ":44418"
+	newConfig.db = "localhost"
+	newConfig.port = ":44416"
+	newConfig.rabbitMQ = "amqp://guest:guest@audit-mq:5672/"
+	return newConfig
+}
+
+func getQuote(stockSymbol string, userId string, transactionNum int) (Quote, error) {
 	q := GetQuote{}
 	q.UserId = userId
 	q.StockSymbol = stockSymbol
 	jsonValue, _ := json.Marshal(q)
-	resp, err := http.Post("http://"+config.quoteServer+":"+quoteServerPort+"/quote", "application/json", bytes.NewBuffer(jsonValue))
+	resp, err := http.Post("http://"+config.quoteServer+":"+config.quotePort+"/quote", "application/json", bytes.NewBuffer(jsonValue))
 	failOnError(err, "Error sending request")
 	defer resp.Body.Close()
 
@@ -1365,7 +1386,7 @@ func initRMQ() {
 	for i := 0; i < 5; i++ {
 		time.Sleep(time.Duration(i) * time.Second)
 
-		rmqConn, err = amqp.Dial("amqp://guest:guest@192.168.1.143:5672/")
+		rmqConn, err = amqp.Dial(config.rabbitMQ)
 		if err == nil {
 			break
 		}
@@ -1378,7 +1399,7 @@ func initRMQ() {
 }
 
 func initDB() {
-	redisHost := "192.168.1.143" + ":6379" //TODO:make config
+	redisHost := config.redisHost + config.redisPort
 	Pool = newPool(redisHost)
 	cleanupHook()
 }
@@ -1434,8 +1455,7 @@ func main() {
 	go clearSells()
 	go clearBuys()
 
-	port := ":44416"
-	fmt.Printf("Listening on port %s\n", port)
+	fmt.Printf("Listening on port %s\n", config.port)
 	http.HandleFunc("/", rootHandler)
 	http.HandleFunc("/quote", quoteHandler)
 	http.HandleFunc("/add", addHandler)
@@ -1453,6 +1473,6 @@ func main() {
 	http.HandleFunc("/setSellTrigger", setSellTriggerHandler)
 	http.HandleFunc("/displaySummary", displaySummaryHandler)
 	http.HandleFunc("/dumpLog", dumpLogHandler)
-	http.ListenAndServe(port, nil)
+	http.ListenAndServe(config.port, nil)
 
 }

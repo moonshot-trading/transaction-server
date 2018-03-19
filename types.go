@@ -36,8 +36,13 @@ type SellTrigger struct {
 
 type transactionConfig struct {
 	quoteServer string
+	quotePort   string
 	auditServer string
 	db          string
+	redisHost   string
+	redisPort   string
+	port        string
+	rabbitMQ    string
 }
 
 //	Auditing types
