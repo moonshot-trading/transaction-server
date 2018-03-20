@@ -75,6 +75,8 @@ func loadConfigDocker() transactionConfig {
 	newConfig.db = os.Getenv("TX_POSTGRES_HOST")
 	newConfig.port = os.Getenv("TX_SERVER_PORT")
 	newConfig.rabbitMQ = os.Getenv("TX_RABBITMQ_CONN_STRING")
+	newConfig.redisHost = os.Getenv("TX_REDIS_HOST")
+	newConfig.redisPort = os.Getenv("TX_REDIS_PORT")
 	return newConfig
 }
 
@@ -87,6 +89,8 @@ func loadConfigLocal() transactionConfig {
 	newConfig.db = "localhost"
 	newConfig.port = ":44416"
 	newConfig.rabbitMQ = "amqp://guest:guest@audit-mq:5672/"
+	newConfig.redisHost = "redis-ts"
+	newConfig.redisPort = ":6379"
 	return newConfig
 }
 
@@ -205,13 +209,13 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 	defer c.Close()
 
 	if c == nil {
-		//fmt.Println("lol no db haha")
+		fmt.Println("Error getting redis pool connection!!!")
 	}
 	_, rediserr := c.Do("INCRBY", req.UserId, req.Amount)
 
 	if rediserr != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "ADD", StockSymbol: "0", Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Error adding funds", TransactionNum: req.TransactionNum}
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+		failWithStatusCode(rediserr, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -244,19 +248,19 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	defer c.Close()
 
 	if c == nil {
-		//fmt.Println("lol no db haha")
+		fmt.Println("Error getting redis pool connection!!!")
 	}
 	res, rediserr := redis.Int(c.Do("GET", req.UserId))
 
 	if rediserr != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: "0", Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "User does not exist", TransactionNum: req.TransactionNum}
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+		failWithStatusCode(rediserr, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
 	if res-req.Amount < 0 {
 		auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "not enough money for BUY", TransactionNum: req.TransactionNum}
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+		failWithStatusCode(errors.New("not enough money"), http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
@@ -264,7 +268,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 
 	if rediserr != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "BUY", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: req.Amount, Username: req.UserId, ErrorMessage: "Could not reserve funds for BUY", TransactionNum: req.TransactionNum}
-		failWithStatusCode(err, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
+		failWithStatusCode(rediserr, http.StatusText(http.StatusInternalServerError), w, http.StatusInternalServerError, auditError)
 		return
 	}
 
