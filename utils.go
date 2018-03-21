@@ -172,7 +172,7 @@ func writeFundsThroughCache(userId string, fundsAmount int) error {
 		if fundsAmount < 0 {
 			return errors.New("can't remove funds from non-existant account")
 		}
-		queryString := "INSERT INTO users(user_name, amount) VALUES($1, $2)"
+		queryString := "INSERT INTO users(user_name, funds) VALUES($1, $2)"
 		stmt, err := db.Prepare(queryString)
 		if err != nil {
 			return err
@@ -207,7 +207,7 @@ func writeFundsThroughCache(userId string, fundsAmount int) error {
 		fmt.Println("Error preparing")
 		return err
 	}
-	pgres, err := stmt.Exec(userId, fundsAmount)
+	pgres, err := stmt.Exec(fundsAmount, userId)
 
 	if err != nil {
 		return err
@@ -238,7 +238,7 @@ func writeStocksThroughCache(userId string, stockSymbol string, stockAmount int)
 			return errors.New("can't remove stocks from non existing account")
 		}
 
-		queryString := "INSERT INTO stocks(user_name, , stock_symbol, amount) VALUES($1, $2, $3)"
+		queryString := "INSERT INTO stocks(user_name, stock_symbol, amount) VALUES($1, $2, $3)"
 		stmt, err := db.Prepare(queryString)
 		if err != nil {
 			return err
@@ -267,7 +267,7 @@ func writeStocksThroughCache(userId string, stockSymbol string, stockAmount int)
 	}
 
 	//	Write to pg
-	queryString := "UPDATE stocks SET amount = stocks.amount - $1 WHERE user_name = $2 AND stock_symbol = $3"
+	queryString := "UPDATE stocks SET amount = stocks.amount + $1 WHERE user_name = $2 AND stock_symbol = $3"
 	stmt, err := db.Prepare(queryString)
 
 	if err != nil {
