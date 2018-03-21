@@ -81,7 +81,7 @@ func clearBuys() {
 					for element.(Stacker).Peek() != nil {
 						// cancel them repeatedly
 						nextBuy := element.(Stacker).Pop()
-						replaceFunds(nextBuy.(Buy), key.(string))
+						writeFundsThroughCache(key.(string), nextBuy.(Buy).BuyAmount)
 					}
 				}
 			}
@@ -105,7 +105,7 @@ func clearSells() {
 					for element.(Stacker).Peek() != nil {
 						//nextSell := sellMap[userID].Pop()
 						nextSell := element.(Stacker).Pop()
-						replaceStocks(nextSell.(Sell), key.(string))
+						writeStocksThroughCache(key.(string), nextSell.(Sell).StockSymbol, nextSell.(Sell).StockSellAmount)
 					}
 				}
 			}
@@ -287,6 +287,39 @@ func writeStocksThroughCache(userId string, stockSymbol string, stockAmount int)
 	}
 
 	return nil
+}
+
+func readStocks(userId string) (int, error) {
+	c := Pool.Get()
+	defer c.Close()
+
+	if c == nil {
+		return -1, errors.New("Error connecting to redis")
+	}
+
+	res, rediserr := redis.Int(c.Do("GET", userId))
+
+	if rediserr != nil {
+		return -1, rediserr
+	}
+
+	return res, nil
+}
+
+func readFunds(userId string, stockSymbol string) (int, error) {
+	c := Pool.Get()
+	defer c.Close()
+
+	if c == nil {
+		return -1, errors.New("Error connecting to redis")
+	}
+	res, rediserr := redis.Int(c.Do("GET", userId+","+stockSymbol))
+
+	if rediserr != nil {
+		return -1, rediserr
+	}
+
+	return res, nil
 }
 
 //  Stack implementation
