@@ -1,12 +1,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/garyburd/redigo/redis"
 )
 
 func runningInDocker() bool {
@@ -148,6 +151,142 @@ func replaceStocks(thisSell Sell, userID string) {
 		failGracefully(err, "***COULD NOT REPLACE STOCKS")
 		return
 	}
+}
+
+// Can take negative fundsAmount for removing funds from account.
+func writeFundsThroughCache(userId string, fundsAmount int) error {
+	//	Get current val from redis, if it will go negative, return before running more queries
+	c := Pool.Get()
+	defer c.Close()
+
+	if c == nil {
+		return errors.New("Error connecting to redis")
+	}
+
+	res, rediserr := redis.Int(c.Do("GET", userId))
+
+	//	If this error is set, then we didnt recieve anything for the key userId
+	//	Need to add row for this user to pg, and entry in redis
+	if rediserr != nil {
+		//	check if trying to remove funds from a non existant account
+		if fundsAmount < 0 {
+			return errors.New("can't remove funds from non-existant account")
+		}
+		queryString := "INSERT INTO users(user_name, amount) VALUES($1, $2)"
+		stmt, err := db.Prepare(queryString)
+		if err != nil {
+			return err
+		}
+		_, err = stmt.Exec(userId, fundsAmount)
+		if err != nil {
+			return err
+		}
+		_, rediserr = c.Do("SET", userId, fundsAmount)
+		if rediserr != nil {
+			return err
+		}
+		return nil
+	}
+
+	//	if we get here, we are incrementing/decrementing an existing balance
+	if res+fundsAmount < 0 {
+		return errors.New("account operation would put balance negative")
+	}
+
+	//	Write to the redis cache
+	_, rediserr = c.Do("SET", userId, fundsAmount+res)
+
+	if rediserr != nil {
+		return rediserr
+	}
+
+	//	Write to pg
+	queryString := "UPDATE users SET funds = users.funds + $1 WHERE user_name = $2"
+	stmt, err := db.Prepare(queryString)
+	if err != nil {
+		fmt.Println("Error preparing")
+		return err
+	}
+	pgres, err := stmt.Exec(userId, fundsAmount)
+
+	if err != nil {
+		return err
+	}
+
+	numRows, err := pgres.RowsAffected()
+
+	if numRows < 1 {
+		return errors.New("error writing funds to postgres")
+	}
+
+	return nil
+}
+
+// Can take negative stockAmount for removing stocks from account.
+func writeStocksThroughCache(userId string, stockSymbol string, stockAmount int) error {
+	//	Get current val from redis, if it will go negative, return before running more queries
+	c := Pool.Get()
+	defer c.Close()
+
+	if c == nil {
+		return errors.New("Error connecting to redis")
+	}
+	res, rediserr := redis.Int(c.Do("GET", userId+","+stockSymbol))
+
+	if rediserr != nil {
+		if stockAmount < 0 {
+			return errors.New("can't remove stocks from non existing account")
+		}
+
+		queryString := "INSERT INTO stocks(user_name, , stock_symbol, amount) VALUES($1, $2, $3)"
+		stmt, err := db.Prepare(queryString)
+		if err != nil {
+			return err
+		}
+		_, err = stmt.Exec(userId, stockSymbol, stockAmount)
+		if err != nil {
+			return err
+		}
+		_, rediserr = c.Do("SET", userId+","+stockSymbol, res+stockAmount)
+		if rediserr != nil {
+			return err
+		}
+		return nil
+	}
+
+	//	if we get to here then we need to check if the increment/decrement is going to be ok
+	if res+stockAmount < 0 {
+		return errors.New("account operation would put stock amount negative")
+	}
+
+	//	write to redis
+	_, rediserr = c.Do("SET", userId+","+stockSymbol, res+stockAmount)
+
+	if rediserr != nil {
+		return rediserr
+	}
+
+	//	Write to pg
+	queryString := "UPDATE stocks SET amount = stocks.amount - $1 WHERE user_name = $2 AND stock_symbol = $3"
+	stmt, err := db.Prepare(queryString)
+
+	if err != nil {
+		return err
+	}
+
+	pgres, err := stmt.Exec(stockAmount, userId, stockSymbol)
+
+	if err != nil {
+		return err
+	}
+
+	numRows, err := pgres.RowsAffected()
+
+	if numRows < 1 {
+		return errors.New("error writing stocks to postgres")
+	}
+
+	return nil
 }
 
 //  Stack implementation
