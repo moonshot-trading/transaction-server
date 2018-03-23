@@ -63,7 +63,7 @@ func audit(auditStruct interface{}) {
 
 func clearBuys() {
 	for {
-		time.Sleep(5000 * time.Millisecond)
+		time.Sleep(25000 * time.Millisecond)
 
 		buyMap.Range(func(key, element interface{}) bool {
 			topBuy := element.(Stacker).Peek()
@@ -89,7 +89,7 @@ func clearBuys() {
 
 func clearSells() {
 	for {
-		time.Sleep(5000 * time.Millisecond)
+		time.Sleep(25000 * time.Millisecond)
 
 		sellMap.Range(func(key, element interface{}) bool {
 			topSell := element.(Stacker).Peek()
