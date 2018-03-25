@@ -36,7 +36,7 @@ func failWithStatusCode(err error, msg string, w http.ResponseWriter, statusCode
 
 func failGracefully(err error, msg string) {
 	if err != nil {
-		fmt.Printf("%s: %s", msg, err)
+		fmt.Printf("%s: %s\n", msg, err)
 	}
 }
 
@@ -181,6 +181,11 @@ func writeFundsThroughCache(userId string, fundsAmount int) error {
 		if err != nil {
 			return err
 		}
+
+		err = stmt.Close()
+		if err != nil {
+			return err
+		}
 		_, rediserr = c.Do("SET", userId, fundsAmount)
 		if rediserr != nil {
 			return err
@@ -204,11 +209,15 @@ func writeFundsThroughCache(userId string, fundsAmount int) error {
 	queryString := "UPDATE users SET funds = users.funds + $1 WHERE user_name = $2"
 	stmt, err := db.Prepare(queryString)
 	if err != nil {
-		fmt.Println("Error preparing")
 		return err
 	}
 	pgres, err := stmt.Exec(fundsAmount, userId)
 
+	if err != nil {
+		return err
+	}
+
+	err = stmt.Close()
 	if err != nil {
 		return err
 	}
@@ -247,6 +256,11 @@ func writeStocksThroughCache(userId string, stockSymbol string, stockAmount int)
 		if err != nil {
 			return err
 		}
+
+		err = stmt.Close()
+		if err != nil {
+			return err
+		}
 		_, rediserr = c.Do("SET", userId+","+stockSymbol, res+stockAmount)
 		if rediserr != nil {
 			return err
@@ -276,6 +290,11 @@ func writeStocksThroughCache(userId string, stockSymbol string, stockAmount int)
 
 	pgres, err := stmt.Exec(stockAmount, userId, stockSymbol)
 
+	if err != nil {
+		return err
+	}
+
+	err = stmt.Close()
 	if err != nil {
 		return err
 	}
