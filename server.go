@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -51,6 +52,12 @@ var (
 
 	SERVER   = "1"
 	FILENAME = "10userWorkLoad"
+
+	userStmt          *sql.Stmt
+	updateUserStmt    *sql.Stmt
+	stocksStmt        *sql.Stmt
+	updateStocksStmt  *sql.Stmt
+	replaceStocksStmt *sql.Stmt
 )
 
 type Quote struct {
@@ -73,6 +80,7 @@ func loadConfigDocker() transactionConfig {
 	newConfig.quoteServer = os.Getenv("QUOTE_SERVER_HOST")
 	newConfig.quotePort = os.Getenv("QUOTE_SERVER_PORT")
 	newConfig.db = os.Getenv("TX_POSTGRES_HOST")
+	newConfig.dbport = os.Getenv("TX_POSTGRES_PORT")
 	newConfig.port = os.Getenv("TX_SERVER_PORT")
 	newConfig.rabbitMQ = os.Getenv("TX_RABBITMQ_CONN_STRING")
 	newConfig.redisHost = os.Getenv("TX_REDIS_HOST")
@@ -88,6 +96,7 @@ func loadConfigLocal() transactionConfig {
 	newConfig.quotePort = ":44418"
 	newConfig.db = "localhost"
 	newConfig.port = ":44416"
+	newConfig.dbport = "44420"
 	newConfig.rabbitMQ = "amqp://guest:guest@audit-mq:5672/"
 	newConfig.redisHost = "redis-ts"
 	newConfig.redisPort = ":6379"
@@ -122,8 +131,8 @@ func getQuote(stockSymbol string, userId string, transactionNum int) (Quote, err
 
 	if !req.Cached {
 		//only audit uncached events
-		auditEvent := QuoteServer{Server: SERVER, Price: floatStringToCents(req.Price), StockSymbol: req.StockSymbol, Username: req.UserId, QuoteServerTime: req.Timestamp, Cryptokey: req.CryptoKey, TransactionNum: transactionNum}
-		audit(auditEvent)
+		//auditEvent := QuoteServer{Server: SERVER, Price: floatStringToCents(req.Price), StockSymbol: req.StockSymbol, Username: req.UserId, QuoteServerTime: req.Timestamp, Cryptokey: req.CryptoKey, TransactionNum: transactionNum}
+		//audit(auditEvent)
 	}
 
 	if err != nil {
@@ -1032,7 +1041,8 @@ func removeSellTimer(s string, u string) {
 
 func loadDB() *sql.DB {
 
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", config.db, 5432, "moonshot", "hodl", "moonshot")
+	port, _ := strconv.Atoi(config.dbport)
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", config.db, port, "moonshot", "hodl", "moonshot")
 
 	var db *sql.DB
 	var err error
@@ -1244,6 +1254,7 @@ func main() {
 
 	initDB()
 
+	prepareStatements()
 	monitorSellTriggers()
 	monitorBuyTriggers()
 

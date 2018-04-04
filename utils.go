@@ -36,8 +36,56 @@ func failWithStatusCode(err error, msg string, w http.ResponseWriter, statusCode
 
 func failGracefully(err error, msg string) {
 	if err != nil {
-		fmt.Printf("%s: %s", msg, err)
+		fmt.Printf("%s: %s\n", msg, err)
 	}
+}
+
+func prepareStatements() {
+	var err error
+	replaceStocksString := "UPDATE stocks SET amount = amount + $1 WHERE user_name = $2 AND stock_symbol = $3"
+	replaceStocksStmt, err = db.Prepare(replaceStocksString)
+
+	if err != nil {
+		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SELL", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: "", ErrorMessage: "Error prepating replacing stocks", TransactionNum: 1}
+		audit(auditError)
+		failGracefully(err, "***COULD NOT PREPARE REPLACE STOCKS")
+		return
+	}
+
+	userString := "INSERT INTO users(user_name, funds) VALUES($1, $2)"
+	userStmt, err = db.Prepare(userString)
+	if err != nil {
+		auditError := ErrorEvent{Server: SERVER, Command: "ADD_FUNDS", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: "", ErrorMessage: "Error prepating user", TransactionNum: 1}
+		audit(auditError)
+		failGracefully(err, "***COULD NOT PREPARE USER")
+		return
+	}
+
+	updateString := "UPDATE users SET funds = users.funds + $1 WHERE user_name = $2"
+	updateUserStmt, err = db.Prepare(updateString)
+	if err != nil {
+		auditError := ErrorEvent{Server: SERVER, Command: "ADD_FUNDS", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: "", ErrorMessage: "Error prepating user", TransactionNum: 1}
+		audit(auditError)
+		failGracefully(err, "***COULD NOT PREPARE USER")
+	}
+
+	stocksString := "INSERT INTO stocks(user_name, stock_symbol, amount) VALUES($1, $2, $3)"
+	stocksStmt, err = db.Prepare(stocksString)
+	if err != nil {
+		auditError := ErrorEvent{Server: SERVER, Command: "ADD_FUNDS", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: "", ErrorMessage: "Error prepating stock", TransactionNum: 1}
+		audit(auditError)
+		failGracefully(err, "***COULD NOT PREPARE STOCK")
+	}
+
+	updateStockString := "UPDATE stocks SET amount = stocks.amount + $1 WHERE user_name = $2 AND stock_symbol = $3"
+	updateStocksStmt, err = db.Prepare(updateStockString)
+
+	if err != nil {
+		auditError := ErrorEvent{Server: SERVER, Command: "ADD_FUNDS", StockSymbol: "", Filename: FILENAME, Funds: 0, Username: "", ErrorMessage: "Error prepating stock", TransactionNum: 1}
+		audit(auditError)
+		failGracefully(err, "***COULD NOT PREPARE STOCK")
+	}
+
 }
 
 func audit(auditStruct interface{}) {
@@ -133,17 +181,9 @@ func replaceFunds(thisBuy Buy, userID string) {
 }
 
 func replaceStocks(thisSell Sell, userID string) {
-	queryString := "UPDATE stocks SET amount = amount + $1 WHERE user_name = $2 AND stock_symbol = $3"
-	stmt, err := db.Prepare(queryString)
-
-	if err != nil {
-		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SELL", StockSymbol: thisSell.StockSymbol, Filename: FILENAME, Funds: thisSell.SellAmount, Username: userID, ErrorMessage: "Error replacing stocks", TransactionNum: 7}
-		audit(auditError)
-		failGracefully(err, "***COULD NOT REPLACE STOCKS")
-		return
-	}
-
-	_, err = stmt.Exec(thisSell.StockSellAmount, userID, thisSell.StockSymbol)
+	//queryString := "UPDATE stocks SET amount = amount + $1 WHERE user_name = $2 AND stock_symbol = $3"
+	//stmt, err := db.Prepare(queryString)
+	_, err := replaceStocksStmt.Exec(thisSell.StockSellAmount, userID, thisSell.StockSymbol)
 
 	if err != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "CANCEL_SELL", StockSymbol: thisSell.StockSymbol, Filename: FILENAME, Funds: thisSell.SellAmount, Username: userID, ErrorMessage: "Error replacing stocks", TransactionNum: 7}
@@ -172,12 +212,12 @@ func writeFundsThroughCache(userId string, fundsAmount int) error {
 		if fundsAmount < 0 {
 			return errors.New("can't remove funds from non-existant account")
 		}
-		queryString := "INSERT INTO users(user_name, funds) VALUES($1, $2)"
-		stmt, err := db.Prepare(queryString)
-		if err != nil {
-			return err
-		}
-		_, err = stmt.Exec(userId, fundsAmount)
+		// queryString := "INSERT INTO users(user_name, funds) VALUES($1, $2)"
+		// stmt, err := db.Prepare(queryString)
+		// if err != nil {
+		// 	return err
+		// }
+		_, err := userStmt.Exec(userId, fundsAmount)
 		if err != nil {
 			return err
 		}
@@ -201,13 +241,13 @@ func writeFundsThroughCache(userId string, fundsAmount int) error {
 	}
 
 	//	Write to pg
-	queryString := "UPDATE users SET funds = users.funds + $1 WHERE user_name = $2"
-	stmt, err := db.Prepare(queryString)
-	if err != nil {
-		fmt.Println("Error preparing")
-		return err
-	}
-	pgres, err := stmt.Exec(fundsAmount, userId)
+	// queryString := "UPDATE users SET funds = users.funds + $1 WHERE user_name = $2"
+	// stmt, err := db.Prepare(queryString)
+	// if err != nil {
+	// 	fmt.Println("Error preparing")
+	// 	return err
+	// }
+	pgres, err := updateUserStmt.Exec(fundsAmount, userId)
 
 	if err != nil {
 		return err
@@ -238,12 +278,12 @@ func writeStocksThroughCache(userId string, stockSymbol string, stockAmount int)
 			return errors.New("can't remove stocks from non existing account")
 		}
 
-		queryString := "INSERT INTO stocks(user_name, stock_symbol, amount) VALUES($1, $2, $3)"
-		stmt, err := db.Prepare(queryString)
-		if err != nil {
-			return err
-		}
-		_, err = stmt.Exec(userId, stockSymbol, stockAmount)
+		// queryString := "INSERT INTO stocks(user_name, stock_symbol, amount) VALUES($1, $2, $3)"
+		// stmt, err := db.Prepare(queryString)
+		// if err != nil {
+		// 	return err
+		// }
+		_, err := stocksStmt.Exec(userId, stockSymbol, stockAmount)
 		if err != nil {
 			return err
 		}
@@ -267,14 +307,14 @@ func writeStocksThroughCache(userId string, stockSymbol string, stockAmount int)
 	}
 
 	//	Write to pg
-	queryString := "UPDATE stocks SET amount = stocks.amount + $1 WHERE user_name = $2 AND stock_symbol = $3"
-	stmt, err := db.Prepare(queryString)
+	// queryString := "UPDATE stocks SET amount = stocks.amount + $1 WHERE user_name = $2 AND stock_symbol = $3"
+	// stmt, err := db.Prepare(queryString)
 
-	if err != nil {
-		return err
-	}
+	// if err != nil {
+	// 	return err
+	// }
 
-	pgres, err := stmt.Exec(stockAmount, userId, stockSymbol)
+	pgres, err := updateStocksStmt.Exec(stockAmount, userId, stockSymbol)
 
 	if err != nil {
 		return err
