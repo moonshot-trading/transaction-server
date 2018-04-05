@@ -329,7 +329,7 @@ func writeStocksThroughCache(userId string, stockSymbol string, stockAmount int)
 	return nil
 }
 
-func readStocks(userId string) (int, error) {
+func readFunds(userId string) (int, error) {
 	c := Pool.Get()
 	defer c.Close()
 
@@ -346,7 +346,7 @@ func readStocks(userId string) (int, error) {
 	return res, nil
 }
 
-func readFunds(userId string, stockSymbol string) (int, error) {
+func readStocks(userId string, stockSymbol string) (int, error) {
 	c := Pool.Get()
 	defer c.Close()
 
