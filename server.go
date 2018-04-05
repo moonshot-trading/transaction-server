@@ -185,14 +185,14 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = json.Marshal(newQuote)
+	quoteJson, err := json.Marshal(newQuote)
 	if err != nil {
 		auditError := ErrorEvent{Server: SERVER, Command: "QUOTE", StockSymbol: req.StockSymbol, Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Error reading quote", TransactionNum: req.TransactionNum}
 		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	//fmt.Fprintf(w, string(quoteJson))
+	fmt.Fprintf(w, string(quoteJson))
 }
 
 func addHandler(w http.ResponseWriter, r *http.Request) {
@@ -280,7 +280,6 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 
 	//	Send response back to client
 	w.WriteHeader(http.StatusOK)
-
 }
 
 func cancelBuyHandler(w http.ResponseWriter, r *http.Request) {
@@ -864,8 +863,93 @@ func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	type StockStruct struct {
+		StockSymbol string
+		Amount      int
+	}
+
+	//type Command struct {
+	//}
+
+	type Trigger struct {
+		StockSymbol string
+		Amount      int
+		Trigger     int
+	}
+
+	summaryStruct := struct {
+		Balance           int
+		PortfolioArray    []StockStruct
+		CommandsArray     []interface{}
+		BuyTriggersArray  []BuyTrigger
+		SellTriggersArray []SellTrigger
+	}{0, []StockStruct{}, []interface{}{}, []BuyTrigger{}, []SellTrigger{}}
+
+	// get the triggers
+	buyMap.Range(func(key, element interface{}) bool {
+		summaryStruct.BuyTriggersArray = append(summaryStruct.BuyTriggersArray, element.(BuyTrigger))
+		return true
+	})
+
+	sellMap.Range(func(key, element interface{}) bool {
+		summaryStruct.SellTriggersArray = append(summaryStruct.SellTriggersArray, element.(SellTrigger))
+		return true
+	})
+
+	userFundsBalance, err := readFunds(req.UserId)
+	if err != nil {
+		auditError := ErrorEvent{Server: SERVER, Command: "DISPLAY_SUMMARY", StockSymbol: "0", Filename: FILENAME, Funds: 0, Username: req.UserId, ErrorMessage: "Bad Request", TransactionNum: req.TransactionNum}
+		failWithStatusCode(err, http.StatusText(http.StatusBadRequest), w, http.StatusBadRequest, auditError)
+		return
+	}
+
+	// get the balances
+
+	summaryStruct.Balance = userFundsBalance
+
+	queryString := "SELECT stock_symbol, amount FROM stocks WHERE username = $1;"
+	stmt, err := db.Prepare(queryString)
+
+	rows, err := stmt.Query(req.UserId)
+	if err != nil {
+		failGracefully(err, "Failed to query stocks DB ")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		resRow := StockStruct{}
+		err = rows.Scan(&resRow.StockSymbol, &resRow.Amount)
+		if err != nil {
+			failGracefully(err, "Couldn't unmarhsal the stocks table response")
+		}
+		summaryStruct.PortfolioArray = append(summaryStruct.PortfolioArray, resRow)
+	}
+
+	// get the commands from audit server
+	// displaySummary
+
+	auditUrl := "audit-server:44417/displaySummary"
+	var jsonStr = []byte(`{"Username":"` + req.UserId + `"}`)
+	request, err := http.NewRequest("POST", auditUrl, bytes.NewBuffer(jsonStr))
+	request.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(request)
+	if err != nil {
+		fmt.Println("Error sending to audit server")
+	}
+	defer resp.Body.Close()
+
+	auditLogs := []interface{}{}
+	json.NewDecoder(resp.Body).Decode(&auditLogs)
+
+	summaryStruct.CommandsArray = auditLogs
+
+	summaryJSON, _ := json.Marshal(summaryStruct)
+
 	w.WriteHeader(http.StatusOK)
-	//fmt.Fprintf(w, "{\"funds\": %d}", userFunds)
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, string(summaryJSON))
 }
 
 func dumpLogHandler(w http.ResponseWriter, r *http.Request) {
