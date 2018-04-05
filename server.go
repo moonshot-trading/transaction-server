@@ -886,12 +886,12 @@ func displaySummaryHandler(w http.ResponseWriter, r *http.Request) {
 	}{0, []StockStruct{}, []interface{}{}, []BuyTrigger{}, []SellTrigger{}}
 
 	// get the triggers
-	buyMap.Range(func(key, element interface{}) bool {
+	buyTriggerMap.Range(func(key, element interface{}) bool {
 		summaryStruct.BuyTriggersArray = append(summaryStruct.BuyTriggersArray, element.(BuyTrigger))
 		return true
 	})
 
-	sellMap.Range(func(key, element interface{}) bool {
+	sellTriggerMap.Range(func(key, element interface{}) bool {
 		summaryStruct.SellTriggersArray = append(summaryStruct.SellTriggersArray, element.(SellTrigger))
 		return true
 	})
