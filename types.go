@@ -39,6 +39,7 @@ type transactionConfig struct {
 	quotePort   string
 	auditServer string
 	db          string
+	dbport      string
 	redisHost   string
 	redisPort   string
 	port        string
